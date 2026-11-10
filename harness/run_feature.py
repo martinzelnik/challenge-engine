@@ -266,11 +266,49 @@ async def main_async(args: argparse.Namespace) -> int:
         return 1
 
     total = sum(r["cost_usd"] or 0 for r in record["roles"])
-    print(
-        f"\nDone: {feature['id']} implemented on {branch} ({test_summary}, ${total:.2f}).\n"
-        f"Next: push the branch and open a PR; the reviewer agent reviews it in CI:\n"
-        f"  git push -u origin {branch}"
+    print(f"\nDone: {feature['id']} implemented on {branch} ({test_summary}, ${total:.2f}).")
+    if not args.push:
+        print(f"Not pushed (--no-push). To publish:\n  git push -u origin {branch}")
+        return 0
+    return publish(feature, branch, record, test_summary)
+
+
+def publish(feature: dict, branch: str, record: dict, test_summary: str) -> int:
+    """Push the feature branch and open a PR against main; the reviewer runs in CI.
+
+    Only feature branches are pushed, never main; branch protection on GitHub
+    means nothing reaches main without passing checks and a merge by a human.
+    """
+    if not branch.startswith("feat/"):
+        raise PipelineError(f"Refusing to push {branch}: only feat/* branches are pushed.")
+    push = pipeline.run(["git", "push", "-u", "origin", branch], ROOT, check=False)
+    if push.returncode != 0:
+        print(f"Push failed, the work is safe locally:\n{push.stderr}")
+        return 1
+    title = f"feat({feature['id']}): {feature['title']}"
+    body = pipeline.pr_body(feature, record["roles"], test_summary, record["commits"])
+    pr = pipeline.run(
+        [
+            "gh",
+            "pr",
+            "create",
+            "--base",
+            "main",
+            "--head",
+            branch,
+            "--title",
+            title,
+            "--body",
+            body,
+        ],
+        ROOT,
+        check=False,
     )
+    if pr.returncode != 0:
+        print(f"Pushed, but opening the PR failed:\n{pr.stderr}")
+        return 1
+    url = pr.stdout.strip().splitlines()[-1]
+    print(f"PR opened: {url}\nThe reviewer agent reviews it in CI; watch with: gh run watch")
     return 0
 
 
@@ -280,6 +318,12 @@ def main() -> int:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--budget", type=float, default=3.0, help="Max USD per agent")
     parser.add_argument("--retries", type=int, default=2, help="Feedback rounds per agent")
+    parser.add_argument(
+        "--no-push",
+        dest="push",
+        action="store_false",
+        help="Stop after the local commit instead of pushing and opening a PR",
+    )
     args = parser.parse_args()
     try:
         return asyncio.run(main_async(args))

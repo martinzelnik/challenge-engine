@@ -179,3 +179,39 @@ def test_assert_only_under_reports_stray_files():
     pipeline.assert_only_under(["tests/a.py"], ("tests/",), "test-writer")
     with pytest.raises(pipeline.PipelineError, match="src/x.py"):
         pipeline.assert_only_under(["tests/a.py", "src/x.py"], ("tests/",), "test-writer")
+
+
+# --- pipeline: PR description -----------------------------------------------
+
+
+def test_pr_body_lists_criteria_agents_and_costs():
+    roles = [
+        {
+            "role": "test-writer",
+            "model": "claude-opus-5-5",
+            "turns": 9,
+            "cost_usd": 0.42,
+            "seconds": 61.2,
+            "attempts": 1,
+            "denied_tool_calls": [],
+            "summary": "Wrote 8 tests.",
+        },
+        {
+            "role": "implementer",
+            "model": "claude-opus-5-5",
+            "turns": 14,
+            "cost_usd": 1.1,
+            "seconds": 130,
+            "attempts": 2,
+            "denied_tool_calls": [{"tool": "Edit"}],
+            "summary": "Done.",
+        },
+    ]
+    body = pipeline.pr_body(FEATURES["features"][1], roles, "40 passed", ["abc1234", "def5678"])
+
+    assert "**F-003: Max loss rule (R2)**" in body
+    assert "- b" in body  # acceptance criterion
+    assert "| test-writer | `claude-opus-5-5` | 9 | $0.42 | 61s | 0 | 0 |" in body
+    assert "| implementer | `claude-opus-5-5` | 14 | $1.10 | 130s | 1 | 1 |" in body
+    assert "Commits: abc1234, def5678." in body
+    assert "<summary>implementer</summary>" in body

@@ -95,6 +95,44 @@ def progress_entry(feature: dict, stats: list[RoleStats], tests: str, today: dat
     )
 
 
+def pr_body(feature: dict, roles: list[dict], tests: str, commits: list[str]) -> str:
+    """PR description: what was built, by which agents, at what cost."""
+    rows = [
+        f"| {r['role']} | `{r['model']}` | {r.get('turns') or '?'} | "
+        f"${r.get('cost_usd') or 0:.2f} | {r.get('seconds', 0):.0f}s | "
+        f"{max(r.get('attempts', 1) - 1, 0)} | {len(r.get('denied_tool_calls') or [])} |"
+        for r in roles
+    ]
+    summaries = [
+        f"<details><summary>{r['role']}</summary>\n\n"
+        f"{(r.get('summary') or '').strip()}\n\n</details>"
+        for r in roles
+    ]
+    return "\n".join(
+        [
+            f"Implements **{feature['id']}: {feature['title']}**, written by the agent "
+            "pipeline (`harness/run_feature.py`).",
+            "",
+            "## Acceptance criteria",
+            *[f"- {c}" for c in feature["acceptance"]],
+            "",
+            "## Agents",
+            "| Role | Model | Turns | Cost | Time | Retries | Denied tool calls |",
+            "|---|---|---|---|---|---|---|",
+            *rows,
+            "",
+            f"Tests: {tests}. Commits: {', '.join(commits)}.",
+            "",
+            "## Agent summaries",
+            *summaries,
+            "",
+            "The reviewer agent reviews this PR in CI. A human merges.",
+            "",
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        ]
+    )
+
+
 def add_progress_entry(root: Path, entry: str) -> None:
     """Insert the entry as the newest one, right after the `---` separator."""
     path = root / PROGRESS

@@ -22,15 +22,15 @@ The engine is the small part. The interesting part is the harness around it.
 ### The agent pipeline
 
 ```
-test-writer ──> implementer ──> (human pushes) ──> CI checks ──> reviewer ──> human merges
- tests/ only    src/ only                          no AI         comments,
- must go red    must go green                                    approves or blocks
+test-writer ──> implementer ──> pipeline pushes ──> CI checks ──> reviewer ──> human merges
+ tests/ only    src/ only       feat/* branch,      no AI         comments,
+ must go red    must go green   opens the PR                      approves or blocks
 ```
 
 ```bash
 .venv/bin/pip install -e ".[dev,agents]"
 export ANTHROPIC_API_KEY=...            # or use Claude Code's login
-.venv/bin/python -m harness.run_feature F-003 --budget 2
+.venv/bin/python -m harness.run_feature F-003 --budget 2   # ends with a PR
 ```
 
 [harness/run_feature.py](harness/run_feature.py) runs the two writing agents on the
@@ -40,7 +40,9 @@ the same roles work as Claude Code subagents), and its limits are enforced in co
 which commands it may run, and no access to `evals/`. The pipeline itself decides
 what counts as done (tests red after the test-writer, everything green after the
 implementer, only allowed paths changed), flips the feature, writes the progress
-entry and commits. Agents never commit or push.
+entry, commits, pushes the `feat/*` branch and opens the PR (`--no-push` to stop
+before that). Agents themselves never commit or push. `main` is protected on GitHub:
+changes need a PR, a passing `checks` job and an approval, and force-pushes are blocked.
 
 ### Observing the agents
 
