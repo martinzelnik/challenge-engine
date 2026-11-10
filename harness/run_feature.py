@@ -34,6 +34,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    ClaudeSDKError,
     HookMatcher,
     ResultMessage,
     TextBlock,
@@ -89,18 +90,22 @@ def make_options(
 
 async def ask(client: ClaudeSDKClient, role: str, prompt: str) -> tuple[ResultMessage | None, str]:
     """Send one message and wait for the agent to finish its turn."""
-    await client.query(prompt)
     result, texts = None, []
-    async for message in client.receive_response():
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if isinstance(block, ToolUseBlock):
-                    target = block.input.get("file_path") or block.input.get("command") or ""
-                    print(f"  [{role}] {block.name} {str(target).replace(str(ROOT) + '/', '')}")
-                elif isinstance(block, TextBlock):
-                    texts.append(block.text)
-        elif isinstance(message, ResultMessage):
-            result = message
+    try:
+        await client.query(prompt)
+        async for message in client.receive_response():
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, ToolUseBlock):
+                        target = block.input.get("file_path") or block.input.get("command") or ""
+                        print(f"  [{role}] {block.name} {str(target).replace(str(ROOT) + '/', '')}")
+                    elif isinstance(block, TextBlock):
+                        texts.append(block.text)
+            elif isinstance(message, ResultMessage):
+                result = message
+    except ClaudeSDKError as e:
+        # e.g. the budget cap was hit; stop cleanly so the run still gets logged
+        raise PipelineError(f"The {role} stopped: {e}") from e
     if result is not None and result.is_error:
         raise PipelineError(f"The {role} stopped with an error: {result.subtype}")
     return result, "\n".join(texts)
