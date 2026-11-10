@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./evals/tasks/*/hidden_tests/**)",
+      "Edit(./evals/**)",
+      "Edit(./docs/spec.md)",
+      "Bash(git push:*)"
+    ]
+  }
+}

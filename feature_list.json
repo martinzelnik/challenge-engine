@@ -1,0 +1,68 @@
+{
+  "_note": "Agents may only change the 'passes' field. Work through features in order.",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "Models and profit target rule (R3)",
+      "acceptance": [
+        "Models reject naive datetimes and unsorted snapshots",
+        "Profit target uses balance, not equity",
+        "No snapshots gives PENDING"
+      ],
+      "passes": true
+    },
+    {
+      "id": "F-002",
+      "title": "Max daily loss rule (R1)",
+      "acceptance": [
+        "No breach gives PASSED",
+        "Equity strictly below the daily limit gives FAILED with breached_at",
+        "Equity exactly at the limit is allowed",
+        "Day-start balance carries over from the previous day's last snapshot",
+        "Trading days are split at midnight in config.timezone, not UTC"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-003",
+      "title": "Max loss rule (R2)",
+      "acceptance": [
+        "No breach gives PASSED",
+        "Equity strictly below the overall limit gives FAILED with the first breach time",
+        "Equity exactly at the limit is allowed"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-004",
+      "title": "Minimum trading days rule (R4)",
+      "acceptance": [
+        "Days are counted by trade open time in config.timezone",
+        "Several trades on one day count once",
+        "A trade opened late in the evening UTC can fall on the next local day"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-005",
+      "title": "Overall verdict (evaluate)",
+      "acceptance": [
+        "Returns rule results in order R1-R4",
+        "FAILED with the earliest breach time when several rules failed",
+        "PASSED only when every rule passed",
+        "IN_PROGRESS otherwise"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-006",
+      "title": "CLI: evaluate an account from a JSON file",
+      "acceptance": [
+        "python -m challenge_engine account.json prints the verdict and each rule's detail",
+        "Exit code 0 for PASSED or IN_PROGRESS, 1 for FAILED, 2 for invalid input",
+        "Invalid input prints a clear error, not a traceback"
+      ],
+      "passes": false
+    }
+  ]
+}
