@@ -17,7 +17,9 @@ How it works:
    answers each one with harness/policy.py, so role limits are enforced in code.
 3. The agent finishes by writing its changes to /mnt/session/outputs/changes.patch.
    This script downloads the patch, applies it locally, and runs the same red /
-   green checks as the local pipeline. Failures go back to the same session.
+   green checks as the local pipeline, in a copy of the tree without evals/.
+   Lint output and pytest's pass/fail counts go back to the same session; the
+   agent reruns the tests in its sandbox for details.
 4. Bookkeeping, commit, push and PR are the local pipeline's.
 
 Each session has a hard spending cap (--budget); Ctrl-C interrupts the running
@@ -28,11 +30,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import shutil
 import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -44,8 +49,22 @@ from ..pipeline import PipelineError, RoleStats
 ROOT = Path(__file__).resolve().parents[2]
 LOCK_FILE = ROOT / "claude-lock.json"
 RUN_LOG = ROOT / "logs" / "agent-runs.jsonl"
+VENV_BIN = ROOT / ".venv" / "bin"
 PATCH_NAME = "changes.patch"
 CONSOLE = "https://platform.claude.com/workspaces/{workspace}/sessions/{session}"
+
+# A file resource's mount_path is rooted under /mnt/session/uploads/, so this
+# lands at /mnt/session/uploads/repo.tar.gz, the path SETUP_COMMAND reads.
+UPLOADS_DIR = "/mnt/session/uploads"
+TARBALL_MOUNT = "/repo.tar.gz"
+
+
+def budget_cents(usd: float) -> str:
+    """A session budget's amount: whole US cents as a string ("200" is $2.00)."""
+    cents = (Decimal(str(usd)) * 100).to_integral_value()
+    if cents <= 0:
+        raise PipelineError("--budget must be at least $0.01.")
+    return str(cents)
 
 
 # --- setup ------------------------------------------------------------------
@@ -238,10 +257,59 @@ def apply_patch(patch: str, role: policy.Role, base: str | None = None) -> list[
     if patch.strip():
         with tempfile.NamedTemporaryFile("w", suffix=".patch", delete=False) as f:
             f.write(patch)
-        pipeline.run(["git", "apply", "--whitespace=nowarn", f.name], ROOT)
+        try:
+            pipeline.run(["git", "apply", "--whitespace=nowarn", f.name], ROOT)
+        finally:
+            Path(f.name).unlink(missing_ok=True)
     changed = pipeline.changed_paths(ROOT)
     pipeline.assert_only_under(changed, role.writable, role.name)
     return changed
+
+
+# --- checks -------------------------------------------------------------------
+# The checks run agent-written code, and what they print goes back to the agent.
+# So they run in a copy of the tree without evals/, lint runs before any agent
+# code does, and from pytest only the pass/fail counts are sent back: the agent
+# reruns the tests in its own sandbox, which has the same files, to see details.
+# Agent code still runs on this machine during the checks; running them in a
+# container is roadmap item 4.
+
+
+def isolated_copy(root: Path, dest: Path) -> Path:
+    """The working tree as it is now, minus evals/ and ignored files, as a new git repo."""
+    listed = pipeline.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], root
+    ).stdout
+    for rel in filter(None, listed.split("\0")):
+        if rel == "evals" or rel.startswith("evals/"):
+            continue
+        src = root / rel
+        if src.is_file():
+            (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest / rel)
+    pipeline.run(["git", "init", "-q"], dest)
+    pipeline.run(["git", "add", "-A"], dest)
+    pipeline.run(
+        ["git", "-c", "user.email=checks@localhost", "-c", "user.name=checks"]
+        + ["commit", "-qm", "checks"],
+        dest,
+    )
+    return dest
+
+
+def pytest_counts(stdout: str) -> str:
+    """Only the counts from pytest's final line, e.g. '2 failed, 11 passed'."""
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    last = lines[-1] if lines else ""
+    counts = re.findall(r"\d+ (?:passed|failed|errors?|skipped|xfailed|xpassed)", last)
+    return ", ".join(counts)
+
+
+def _pytest(copy: Path, paths: list[str]) -> tuple[bool, str]:
+    result = pipeline.run(
+        [str(VENV_BIN / "pytest"), "-q", "-p", "no:cacheprovider", *paths], copy, check=False
+    )
+    return result.returncode == 0, pytest_counts(result.stdout)
 
 
 def red_check(changed: list[str]) -> tuple[bool, str, str]:
@@ -253,23 +321,41 @@ def red_check(changed: list[str]) -> tuple[bool, str, str]:
             "No test files in the patch. Write the tests, then run the finish command.",
             "",
         )
-    pipeline.run([".venv/bin/ruff", "format", *tests], ROOT, check=False)
-    lint = pipeline.run([".venv/bin/ruff", "check", *tests], ROOT, check=False)
-    passed, output = pipeline.run_tests(ROOT, tests)
-    summary = pipeline.summarize_pytest(output)
+    # Lint reads files without running them, so its output is safe to send back.
+    pipeline.run([str(VENV_BIN / "ruff"), "format", *tests], ROOT, check=False)
+    lint = pipeline.run([str(VENV_BIN / "ruff"), "check", *tests], ROOT, check=False)
     if lint.returncode:
-        return False, f"ruff reports problems:\n{lint.stdout}", summary
+        return False, f"ruff reports problems:\n{lint.stdout}", ""
+    with tempfile.TemporaryDirectory() as tmp:
+        passed, summary = _pytest(isolated_copy(ROOT, Path(tmp)), tests)
     if passed:
         return False, "Your tests already pass, so they don't test the new feature.", summary
     if " failed" not in summary:
-        return False, f"The tests don't fail cleanly:\n{output[-4000:]}", summary
+        return (
+            False,
+            f"The tests don't fail cleanly ({summary or 'no results'}): they error instead of "
+            "failing. Run pytest on them in your sandbox to see why.",
+            summary,
+        )
     return True, "", summary
 
 
 def green_check(changed: list[str]) -> tuple[bool, str, str]:
-    ok, output = pipeline.run_checks(ROOT)
-    summary = pipeline.summarize_pytest(output)
-    return ok, ("" if ok else f"The checks fail:\n\n{output[-6000:]}"), summary
+    """What CI runs: lint, format check, full test suite."""
+    problems = []
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = isolated_copy(ROOT, Path(tmp))
+        for cmd in (["ruff", "check", "."], ["ruff", "format", "--check", "."]):
+            result = pipeline.run([str(VENV_BIN / cmd[0]), *cmd[1:]], copy, check=False)
+            if result.returncode:
+                problems.append(f"$ {' '.join(cmd)}\n{result.stdout}{result.stderr}"[-3000:])
+        passed, summary = _pytest(copy, [])
+    if not passed:
+        problems.append(
+            f"Tests fail ({summary or 'no results'}). Run pytest in your sandbox to see "
+            "which and why: it has the same files."
+        )
+    return not problems, "\n\n".join(problems), summary
 
 
 def start_session(
@@ -289,10 +375,10 @@ def start_session(
         agent=agent_id,
         environment_id=env_id,
         title=f"{feature['id']} {role.name}",
-        resources=[{"type": "file", "file_id": upload.id, "mount_path": "/repo.tar.gz"}],
+        resources=[{"type": "file", "file_id": upload.id, "mount_path": TARBALL_MOUNT}],
         budget={
             "type": "limit",
-            "max_list_cost": {"amount": str(round(args.budget * 100)), "currency": "USD"},
+            "max_list_cost": {"amount": budget_cents(args.budget), "currency": "USD"},
         },
         metadata={"feature": feature["id"], "role": role.name},
     )
@@ -309,7 +395,7 @@ def work(
     Returns (changed paths, agent summary, test summary, attempts).
     """
     role = session.role
-    summary, test_summary = "", ""
+    summary, test_summary, last_failure = "", "", ""
     for attempt in range(1, retries + 2):
         try:
             summary = session.run_turn(message)
@@ -319,6 +405,8 @@ def work(
             raise PipelineError(stopped) from None
         patch = session.download_patch()
         if patch is None:
+            print(f"  no patch found, retry {attempt}/{retries}")
+            last_failure = "it never wrote its patch to /mnt/session/outputs/"
             message = f"I can't find the patch. Run exactly:\n{policy.FINISH_COMMAND}"
             continue
         changed = apply_patch(patch, role, base)
@@ -326,8 +414,9 @@ def work(
         if ok:
             return changed, summary, test_summary, attempt
         print(f"  checks failed, retry {attempt}/{retries}")
+        last_failure = f"its work still fails the checks:\n{problem}"
         message = f"{problem}\nFix it, then run the finish command again."
-    raise PipelineError(f"The {role.name}'s work still fails checks after {retries} retries.")
+    raise PipelineError(f"The {role.name} gave up after {retries} retries: {last_failure}")
 
 
 def role_record(session: Session, started: float, attempts: int, summary: str) -> dict:
@@ -440,7 +529,21 @@ def review_feedback(pr: int, review: dict, sha: str) -> str:
     )
 
 
-def review_loop(session: Session, feature: dict, branch: str, pr: int, base: str, args, msg) -> str:
+def review_round_entry(feature: dict, round_: int, tests: str, today: date) -> str:
+    """progress.md entry for a fix made after the reviewer requested changes."""
+    return (
+        f"## {today.isoformat()} — {feature['id']} review round {round_}\n"
+        f"- Agent/model: agent pipeline: implementer (hosted), same session as the feature\n"
+        f"- Done: the reviewer agent requested changes; the implementer addressed them.\n"
+        f"- Tests: {tests}, lint clean: yes\n"
+        f"- Problems / surprises: see the review on the PR.\n"
+        f"- Next: the reviewer runs again\n"
+    )
+
+
+def review_loop(
+    session: Session, feature: dict, branch: str, pr: int, base: str, args, msg, record: dict
+) -> str:
     """Re-implement until the reviewer approves, or hand the PR to a human."""
     for round_ in range(1, args.review_rounds + 1):
         sha = pipeline.run(["git", "rev-parse", "HEAD"], ROOT).stdout.strip()
@@ -452,8 +555,21 @@ def review_loop(session: Session, feature: dict, branch: str, pr: int, base: str
         changed, _, test_summary, _ = work(
             session, review_feedback(pr, review, sha), green_check, args.retries, base
         )
-        pipeline.commit(ROOT, changed, msg(f"fix({feature['id']}): address review round {round_}"))
+        pipeline.add_progress_entry(
+            ROOT, review_round_entry(feature, round_, test_summary, date.today())
+        )
+        fix = pipeline.commit(
+            ROOT,
+            [*changed, pipeline.PROGRESS],
+            msg(f"fix({feature['id']}): address review round {round_}"),
+        )
+        record["commits"].append(fix)
+        record["review_rounds"].append({"round": round_, "commit": fix, "tests": test_summary})
         pipeline.run(["git", "push", "origin", branch], ROOT)
+        body = pipeline.pr_body(
+            feature, record["roles"], test_summary, record["commits"], record["review_rounds"]
+        )
+        pipeline.run(["gh", "pr", "edit", str(pr), "--body", body], ROOT)
         print(f"  pushed fixes ({test_summary}); the reviewer runs again")
     return "ROUNDS_EXHAUSTED"
 
@@ -481,6 +597,7 @@ def main_sync(args: argparse.Namespace) -> int:
         "roles": [],
         "sessions": {},
         "commits": [],
+        "review_rounds": [],
     }
     client = anthropic.Anthropic()
     criteria = "\n".join(f"- {c}" for c in feature["acceptance"])
@@ -549,11 +666,18 @@ def main_sync(args: argparse.Namespace) -> int:
         pr = open_pr(feature, branch, record, test_summary)
         if args.review_rounds == 0:
             return 0
-        outcome = review_loop(implementer, feature, branch, pr, base, args, msg)
-    except PipelineError as e:
-        record["error"] = str(e)
+        # The record above is already committed; a stop from here on logs it again
+        # with the error, marked as the review phase.
+        record["phase"] = "review"
+        outcome = review_loop(implementer, feature, branch, pr, base, args, msg, record)
+    except (PipelineError, KeyboardInterrupt) as e:
+        reason = str(e) if isinstance(e, PipelineError) else "Stopped by you (Ctrl-C)."
+        record["error"] = reason
         _write_log(record)
-        print(f"\nPipeline stopped: {e}\nBranch {branch} is left as it is for a human to look at.")
+        print(
+            f"\nPipeline stopped: {reason}\n"
+            f"Branch {branch} is left as it is for a human to look at."
+        )
         return 1
 
     final_cost = implementer.list_cost()

@@ -95,8 +95,32 @@ def progress_entry(feature: dict, stats: list[RoleStats], tests: str, today: dat
     )
 
 
-def pr_body(feature: dict, roles: list[dict], tests: str, commits: list[str]) -> str:
-    """PR description: what was built, by which agents, at what cost."""
+def pr_body(
+    feature: dict,
+    roles: list[dict],
+    tests: str,
+    commits: list[str],
+    review_rounds: list[dict] | None = None,
+) -> str:
+    """PR description: what was built, by which agents, at what cost.
+
+    `review_rounds` ({round, commit, tests}) lists fixes made after the reviewer
+    requested changes, so the description stays true after the first push.
+    """
+    rounds = [f"| {r['round']} | {r['commit']} | {r['tests']} |" for r in review_rounds or []]
+    rounds_section = (
+        [
+            "## Review rounds",
+            "The reviewer requested changes; the implementer's session fixed them.",
+            "",
+            "| Round | Fix commit | Tests |",
+            "|---|---|---|",
+            *rounds,
+            "",
+        ]
+        if rounds
+        else []
+    )
     rows = [
         f"| {r['role']} | `{r['model']}` | {r.get('turns') or '?'} | "
         f"${r.get('cost_usd') or 0:.2f} | {r.get('seconds', 0):.0f}s | "
@@ -123,6 +147,7 @@ def pr_body(feature: dict, roles: list[dict], tests: str, commits: list[str]) ->
             "",
             f"Tests: {tests}. Commits: {', '.join(commits)}.",
             "",
+            *rounds_section,
             "## Agent summaries",
             *summaries,
             "",

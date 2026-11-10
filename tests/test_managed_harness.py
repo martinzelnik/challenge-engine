@@ -93,3 +93,64 @@ def test_load_ids_reads_ant_apply_lock_file(tmp_path):
 def test_missing_lock_file_explains_how_to_create_agents(tmp_path):
     with pytest.raises(run.PipelineError, match="ant apply"):
         run.load_ids(tmp_path / "claude-lock.json")
+
+
+def test_tarball_mount_is_where_the_setup_command_reads_it():
+    # A file's mount_path is rooted under /mnt/session/uploads/.
+    assert f"{run.UPLOADS_DIR}{run.TARBALL_MOUNT}" in SETUP_COMMAND
+
+
+@pytest.mark.parametrize(("usd", "cents"), [(2, "200"), (0.5, "50"), (1.25, "125"), (3.0, "300")])
+def test_budget_is_sent_in_cents(usd, cents):
+    assert run.budget_cents(usd) == cents
+
+
+def test_zero_budget_is_rejected():
+    with pytest.raises(run.PipelineError):
+        run.budget_cents(0)
+
+
+def _git(repo, *args):
+    import subprocess
+
+    subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+
+def test_checks_copy_has_the_working_tree_but_not_evals(tmp_path):
+    repo, copy = tmp_path / "repo", tmp_path / "copy"
+    (repo / "evals/tasks/x/hidden_tests").mkdir(parents=True)
+    (repo / "evals/tasks/x/hidden_tests/test_secret.py").write_text("SECRET = 1\n")
+    (repo / "src").mkdir()
+    (repo / "src/a.py").write_text("A = 1\n")
+    (repo / ".gitignore").write_text("ignored.txt\n")
+    _git(repo, "init", "-q")
+    _git(repo, "add", "-A")
+    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
+    (repo / "src/a.py").write_text("A = 2\n")  # the agent's uncommitted patch
+    (repo / "src/b.py").write_text("B = 1\n")  # a new file from the patch
+    (repo / "ignored.txt").write_text("x\n")
+    copy.mkdir()
+
+    run.isolated_copy(repo, copy)
+
+    assert (copy / "src/a.py").read_text() == "A = 2\n"
+    assert (copy / "src/b.py").exists()
+    assert not (copy / "evals").exists()
+    assert not (copy / "ignored.txt").exists()
+    assert (copy / ".git").is_dir()  # tests that call git still work in the copy
+
+
+def test_only_pytest_counts_go_back_to_the_agent():
+    output = "F.\nprinted by agent code: 9 passed SECRET\n2 failed, 3 passed in 0.12s\n"
+    assert run.pytest_counts(output) == "2 failed, 3 passed"
+    assert run.pytest_counts("E\n1 error in 0.05s\n") == "1 error"
+    assert run.pytest_counts("leaked text only") == ""
+
+
+def test_review_round_entry_follows_the_progress_template():
+    from datetime import date
+
+    entry = run.review_round_entry({"id": "F-003"}, 1, "30 passed", date(2026, 11, 11))
+    assert entry.startswith("## 2026-11-11 — F-003 review round 1\n")
+    for field in ("- Agent/model:", "- Done:", "- Tests: 30 passed", "- Next:"):
+        assert field in entry

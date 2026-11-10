@@ -215,3 +215,13 @@ def test_pr_body_lists_criteria_agents_and_costs():
     assert "| implementer | `claude-opus-5-5` | 14 | $1.10 | 130s | 1 | 1 |" in body
     assert "Commits: abc1234, def5678." in body
     assert "<summary>implementer</summary>" in body
+
+
+def test_pr_body_lists_review_rounds_only_when_there_are_some():
+    feature = {"id": "F-003", "title": "Max loss rule", "acceptance": ["a"]}
+    plain = pipeline.pr_body(feature, [], "10 passed", ["abc1234"])
+    assert "Review rounds" not in plain
+    rounds = [{"round": 1, "commit": "def5678", "tests": "11 passed"}]
+    body = pipeline.pr_body(feature, [], "11 passed", ["abc1234", "def5678"], rounds)
+    assert "## Review rounds" in body
+    assert "| 1 | def5678 | 11 passed |" in body
