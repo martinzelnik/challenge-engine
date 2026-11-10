@@ -7,7 +7,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
-agents = ["claude-agent-sdk>=0.2.140"]
+agents = ["claude-agent-sdk>=0.2.140", "anthropic>=0.92"]
 
 [build-system]
 requires = ["setuptools>=69"]
