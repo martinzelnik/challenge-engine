@@ -2,12 +2,44 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from .models import AccountHistory, ChallengeConfig, RuleResult, RuleStatus, Verdict
 
 
 def check_max_daily_loss(history: AccountHistory, config: ChallengeConfig) -> RuleResult:
-    """R1. Feature F-002."""
-    raise NotImplementedError("F-002")
+    """R1. Equity must not fall below the day-start balance minus the daily allowance.
+
+    The day-start balance is the closed balance of the last snapshot before local
+    midnight (or the initial balance on the first day). Days are split in config.timezone.
+    """
+    allowance = config.max_daily_loss_pct * config.initial_balance
+    current_day: date | None = None
+    day_start_balance = config.initial_balance
+    previous_balance = config.initial_balance
+
+    for snapshot in history.snapshots:
+        day = snapshot.at.astimezone(config.tz).date()
+        if day != current_day:
+            current_day = day
+            day_start_balance = previous_balance
+        limit = day_start_balance - allowance
+        if snapshot.equity < limit:
+            return RuleResult(
+                "max_daily_loss",
+                RuleStatus.FAILED,
+                f"On {day.isoformat()} equity fell to {snapshot.equity:,.2f}, below the daily "
+                f"limit of {limit:,.2f} (day-start balance {day_start_balance:,.2f} minus "
+                f"{allowance:,.2f}).",
+                breached_at=snapshot.at,
+            )
+        previous_balance = snapshot.balance
+
+    return RuleResult(
+        "max_daily_loss",
+        RuleStatus.PASSED,
+        f"Equity never fell more than {allowance:,.2f} below any day's starting balance.",
+    )
 
 
 def check_max_loss(history: AccountHistory, config: ChallengeConfig) -> RuleResult:

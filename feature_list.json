@@ -21,7 +21,7 @@
         "Day-start balance carries over from the previous day's last snapshot",
         "Trading days are split at midnight in config.timezone, not UTC"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F-003",
