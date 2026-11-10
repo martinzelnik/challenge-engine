@@ -29,7 +29,8 @@ Newest entry at the top. Each session adds one entry using this template:
 - Tests: 22/22, lint clean: yes (13 new tests covering every acceptance criterion,
   plus closed intraday losses, a non-Prague timezone, midnight exactly and a custom %)
 - Problems / surprises: none. Not a clean eval sample: this agent also wrote the
-  F-002 hidden tests in the scaffold session.
+  F-002 hidden tests in the scaffold session. `git push` for the PR was denied by
+  `.claude/settings.json` as intended; a human pushes the branch.
 - Next: F-003 max loss rule
 
 ## 2026-11-10 — F-001 Models and profit target rule
