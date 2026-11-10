@@ -32,6 +32,12 @@ All three must pass before you commit.
 | `feature_list.json` | Features and whether they pass | Agents may only flip `passes` |
 | `progress.md` | Running log of sessions | Agents append |
 | `evals/` | Eval tasks, hidden tests, scorer | Humans only |
+| `REVIEW.md`, `scripts/`, `.github/` | Reviewer agent instructions, PR checks, CI | Humans only |
+| `harness/`, `.claude/agents/` | Agent pipeline and role prompts | Humans only |
+| `logs/agent-runs.jsonl` | One line per pipeline run: cost, turns, denials | The pipeline appends |
+
+PRs that touch any "Humans only" path can't be approved by the reviewer agent;
+a human has to approve them.
 
 ## Session workflow
 

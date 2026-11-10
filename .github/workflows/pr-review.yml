@@ -1,0 +1,119 @@
+# Two gates on every PR:
+#   1. checks: deterministic (tests, lint, agent boundaries, hidden evals). Must pass.
+#   2. review: Claude reviews against REVIEW.md and returns a verdict;
+#      scripts/submit_review.py decides whether that becomes an approval.
+# The review only runs once checks pass, so failing PRs cost no tokens.
+
+name: PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    outputs:
+      flipped: ${{ steps.boundaries.outputs.flipped }}
+      needs_human: ${{ steps.boundaries.outputs.needs_human }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # the boundary check diffs against the base branch
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Agent boundaries
+        id: boundaries
+        run: python scripts/check_boundaries.py --base "$BASE_SHA"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
+      - name: Hidden evals for the feature
+        env:
+          FLIPPED: ${{ steps.boundaries.outputs.flipped }}
+        run: |
+          if [ -z "$FLIPPED" ]; then echo "No feature marked passing; no evals to run."; exit 0; fi
+          status=0
+          for id in $FLIPPED; do
+            task=$(find evals/tasks -mindepth 1 -maxdepth 1 -type d -name "$id-*" | head -n 1)
+            if [ -z "$task" ]; then
+              echo "::notice::No eval task for $id yet."
+              continue
+            fi
+            python evals/score.py "$(basename "$task")" --no-save --label ci || status=1
+          done
+          exit $status
+
+  review:
+    needs: checks
+    # Skip drafts, and PRs from forks (they get no secrets).
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    env:
+      MODEL: claude-opus-5-5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Claude review
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          classify_inline_comments: "false"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            FEATURE MARKED PASSING: ${{ needs.checks.outputs.flipped || 'none' }}
+            CHANGES HARNESS FILES: ${{ needs.checks.outputs.needs_human }}
+
+            You are the reviewer agent for this repository. The PR branch is checked out.
+            CI checks (tests, lint, agent boundaries, hidden evals) have already passed.
+
+            Follow REVIEW.md exactly. Read REVIEW.md, AGENTS.md and docs/spec.md first,
+            then the diff with `gh pr diff`. Post inline comments for blocking issues,
+            then return your verdict in the required JSON shape.
+          claude_args: >-
+            --model ${{ env.MODEL }}
+            --max-turns 30
+            --allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment"
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["approve","request_changes"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}},"suggestions":{"type":"array","items":{"type":"string"}}},"required":["verdict","summary","blocking_issues","suggestions"]}'
+
+      - name: Submit review
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NEEDS_HUMAN: ${{ needs.checks.outputs.needs_human }}
+          REVIEW_JSON: ${{ steps.claude.outputs.structured_output }}
+        run: python3 scripts/submit_review.py
