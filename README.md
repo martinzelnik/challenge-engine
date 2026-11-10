@@ -19,6 +19,39 @@ The engine is the small part. The interesting part is the harness around it.
 | PR gate: tests, lint, agent boundaries, hidden evals | [.github/workflows/pr-review.yml](.github/workflows/pr-review.yml), [scripts/check_boundaries.py](scripts/check_boundaries.py) |
 | Reviewer agent that approves or requests changes | [REVIEW.md](REVIEW.md), [scripts/submit_review.py](scripts/submit_review.py) |
 
+### The agent pipeline
+
+```
+test-writer ──> implementer ──> (human pushes) ──> CI checks ──> reviewer ──> human merges
+ tests/ only    src/ only                          no AI         comments,
+ must go red    must go green                                    approves or blocks
+```
+
+```bash
+.venv/bin/pip install -e ".[dev,agents]"
+export ANTHROPIC_API_KEY=...            # or use Claude Code's login
+.venv/bin/python -m harness.run_feature F-003 --budget 2
+```
+
+[harness/run_feature.py](harness/run_feature.py) runs the two writing agents on the
+Claude Agent SDK. Each role's prompt lives in [.claude/agents/](.claude/agents/) (so
+the same roles work as Claude Code subagents), and its limits are enforced in code by
+[harness/policy.py](harness/policy.py) on every tool call: which paths it may edit,
+which commands it may run, and no access to `evals/`. The pipeline itself decides
+what counts as done (tests red after the test-writer, everything green after the
+implementer, only allowed paths changed), flips the feature, writes the progress
+entry and commits. Agents never commit or push.
+
+### Observing the agents
+
+| What | Where |
+|---|---|
+| Live: every tool call and every denied call, per role | Terminal output of `run_feature` |
+| Per run: model, cost, turns, time, retries, denied calls, agent summaries | [logs/agent-runs.jsonl](logs/agent-runs.jsonl) |
+| Full transcript of any agent | `session_id` in the run log (Claude Code keeps session transcripts under `~/.claude/projects/`) |
+| What changed, step by step | Git history: a `test(...)` commit, then a `feat(...)` commit |
+| Review outcome | PR review and inline comments; Actions run logs |
+
 ### How a PR gets merged
 
 1. **Checks** (no AI): tests, lint, the boundary check (an agent may only flip one
@@ -40,7 +73,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ## Roadmap
 
 1. [x] Scaffold, spec, agent instructions, first eval task
-2. [ ] Initializer + coding-agent loop on the Claude Agent SDK
+2. [x] Agent pipeline on the Claude Agent SDK (test-writer, implementer, enforced role limits)
 3. [ ] Eval runner with cost, time and diff-size tracking
 4. [ ] Sandbox (Docker, no network), permission hooks, per-run budget
 5. [ ] Model routing and a model comparison

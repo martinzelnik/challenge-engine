@@ -78,7 +78,7 @@ jobs:
       pull-requests: write
       id-token: write
     env:
-      MODEL: claude-sonnet-5-5
+      MODEL: claude-opus-5-5
     steps:
       - uses: actions/checkout@v6
         with:

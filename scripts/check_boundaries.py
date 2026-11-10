@@ -30,6 +30,7 @@ PROTECTED_PREFIXES = (
     ".claude/",
     ".github/",
     "scripts/",
+    "harness/",
     "AGENTS.md",
     "CLAUDE.md",
     "REVIEW.md",
