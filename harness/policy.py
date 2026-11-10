@@ -25,6 +25,7 @@ class Role:
     writable: tuple[str, ...]  # path prefixes, relative to the repo root
     commands: tuple[str, ...]  # allowed executables (first word of a Bash command)
     prompt_file: str
+    exact_commands: tuple[str, ...] = ()  # whole command lines allowed verbatim
 
 
 TEST_WRITER = Role(
@@ -92,6 +93,8 @@ def check(role: Role, tool: str, tool_input: dict[str, Any], root: Path) -> str 
 
     if tool == "Bash":
         command = tool_input.get("command", "")
+        if command.strip() in role.exact_commands:
+            return None
         if any(ch in SHELL_METACHARACTERS for ch in command):
             return "Run one plain command: no pipes, chaining, redirects or substitutions."
         try:
@@ -105,3 +108,58 @@ def check(role: Role, tool: str, tool_input: dict[str, Any], root: Path) -> str 
         return None
 
     return None  # TodoWrite
+
+
+# --- Hosted roles (Managed Agents) ------------------------------------------
+# Same limits, applied to the agent's sandbox: the repo is unpacked at
+# HOSTED_ROOT, and the two setup/finish commands below are the only ones that
+# may use shell operators. agents/*.md quote them verbatim (a test checks that).
+
+HOSTED_ROOT = Path("/workspace/repo")
+
+SETUP_COMMAND = (
+    "mkdir -p /workspace/repo && tar -xzf /mnt/session/uploads/repo.tar.gz -C /workspace/repo"
+    " && cd /workspace/repo && git init -q && git add -A"
+    " && git -c user.email=agent@example.com -c user.name=agent commit -qm base"
+    " && pip install -q pytest ruff"
+)
+FINISH_COMMAND = (
+    "cd /workspace/repo && git add -A"
+    " && git diff --cached --binary HEAD > /mnt/session/outputs/changes.patch"
+)
+
+HOSTED_TEST_WRITER = Role(
+    name="test-writer",
+    writable=TEST_WRITER.writable,
+    commands=("pytest",),
+    prompt_file="agents/test-writer.md",
+    exact_commands=(SETUP_COMMAND, FINISH_COMMAND),
+)
+
+HOSTED_IMPLEMENTER = Role(
+    name="implementer",
+    writable=IMPLEMENTER.writable,
+    commands=("pytest", "ruff"),
+    prompt_file="agents/implementer.md",
+    exact_commands=(SETUP_COMMAND, FINISH_COMMAND),
+)
+
+# Managed Agents tool names -> the names check() knows.
+HOSTED_TOOL_NAMES = {
+    "bash": "Bash",
+    "read": "Read",
+    "write": "Write",
+    "edit": "Edit",
+    "glob": "Glob",
+    "grep": "Grep",
+}
+
+
+def check_hosted(role: Role, tool: str, tool_input: dict[str, Any]) -> str | None:
+    """check() for a hosted agent's tool call, with paths inside the sandbox."""
+    name = HOSTED_TOOL_NAMES.get(tool)
+    if name is None:
+        return f"The {role.name} can't use {tool}."
+    if name in ("Write", "Edit") and "file_path" not in tool_input and "path" in tool_input:
+        tool_input = {**tool_input, "file_path": tool_input["path"]}
+    return check(role, name, tool_input, HOSTED_ROOT)

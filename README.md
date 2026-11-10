@@ -44,6 +44,38 @@ entry, commits, pushes the `feat/*` branch and opens the PR (`--no-push` to stop
 before that). Agents themselves never commit or push. `main` is protected on GitHub:
 changes need a PR, a passing `checks` job and an approval, and force-pushes are blocked.
 
+### Hosted agents (Claude Managed Agents)
+
+The same pipeline can run each agent in a hosted session that you can watch and
+steer while it works, and it closes the loop with the reviewer:
+
+```bash
+ant apply agents/test-writer.md agents/implementer.md environments/challenge-engine.yaml  # once
+.venv/bin/python -m harness.managed.run F-003 --budget 2 --review-rounds 2
+```
+
+- **Agents as files.** [agents/](agents/) and [environments/](environments/) are synced
+  with `ant apply`; IDs go to `claude-lock.json`. Editing a file and re-applying makes
+  a new agent version.
+- **No access to the hidden tests.** The repo is uploaded as a tarball without
+  `evals/`. The sandbox has no web access.
+- **Limits enforced in code.** Every write, edit and bash call is `always_ask`; the
+  orchestrator answers each one with [harness/policy.py](harness/policy.py).
+- **Hard spending cap per session** (`--budget`), enforced by the platform.
+- **Review loop.** After the PR opens, the orchestrator waits for the reviewer. On
+  *changes requested* it sends the review and inline comments to the implementer's
+  still-open session, re-runs the checks, pushes the fix, and waits again, up to
+  `--review-rounds` times. Approved, commented or out of rounds: a human takes over.
+
+**Watching and steering a hosted agent:**
+
+| How | What you get |
+|---|---|
+| The `watch:` link printed per session | Console session viewer: live transcript, tool calls, cost against budget |
+| `ant beta:sessions connect <session-id>` | The same in your terminal: Esc interrupts, you can message the agent or answer a paused tool call |
+| `ant beta:sessions connect <session-id> --web` | The Console viewer served locally |
+| Ctrl-C in the orchestrator | Interrupts the running session and stops the pipeline |
+
 ### Observing the agents
 
 | What | Where |

@@ -1,0 +1,7 @@
+name: challenge-engine
+description: Sandbox for the challenge-engine agents. No web access; package managers only, for pytest and ruff.
+config:
+  type: cloud
+  networking:
+    type: limited
+    allow_package_managers: true
