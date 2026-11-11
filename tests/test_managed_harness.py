@@ -116,20 +116,26 @@ def _git(repo, *args):
     subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
 
 
-def test_checks_copy_has_the_working_tree_but_not_evals(tmp_path):
-    repo, copy = tmp_path / "repo", tmp_path / "copy"
+def _repo_with_hidden_test(tmp_path):
+    repo = tmp_path / "repo"
     (repo / "evals/tasks/x/hidden_tests").mkdir(parents=True)
     (repo / "evals/tasks/x/hidden_tests/test_secret.py").write_text("SECRET = 1\n")
     (repo / "src").mkdir()
     (repo / "src/a.py").write_text("A = 1\n")
+    (repo / "tests").mkdir()
+    (repo / "tests/test_a.py").write_text("")
     (repo / ".gitignore").write_text("ignored.txt\n")
     _git(repo, "init", "-q")
     _git(repo, "add", "-A")
     _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
+    return repo
+
+
+def test_checks_copy_has_the_working_tree_but_not_evals(tmp_path):
+    repo, copy = _repo_with_hidden_test(tmp_path), tmp_path / "copy"
     (repo / "src/a.py").write_text("A = 2\n")  # the agent's uncommitted patch
     (repo / "src/b.py").write_text("B = 1\n")  # a new file from the patch
     (repo / "ignored.txt").write_text("x\n")
-    copy.mkdir()
 
     run.isolated_copy(repo, copy)
 
@@ -140,11 +146,50 @@ def test_checks_copy_has_the_working_tree_but_not_evals(tmp_path):
     assert (copy / ".git").is_dir()  # tests that call git still work in the copy
 
 
-def test_only_pytest_counts_go_back_to_the_agent():
-    output = "F.\nprinted by agent code: 9 passed SECRET\n2 failed, 3 passed in 0.12s\n"
-    assert run.pytest_counts(output) == "2 failed, 3 passed"
-    assert run.pytest_counts("E\n1 error in 0.05s\n") == "1 error"
-    assert run.pytest_counts("leaked text only") == ""
+def test_checks_copy_skips_symlinks_into_evals(tmp_path):
+    repo, copy = _repo_with_hidden_test(tmp_path), tmp_path / "copy"
+    (repo / "tests/test_x.py").symlink_to("../evals/tasks/x/hidden_tests/test_secret.py")
+    (repo / "tests/hidden").symlink_to("../evals/tasks/x/hidden_tests")
+
+    run.isolated_copy(repo, copy)
+
+    assert not (copy / "tests/test_x.py").exists()
+    assert not (copy / "tests/hidden").exists()
+    assert "SECRET" not in "".join(
+        f.read_text() for f in copy.rglob("*.py") if ".git" not in f.parts
+    )
+
+
+def test_a_patch_that_adds_a_symlink_is_refused(tmp_path):
+    patch = (
+        "diff --git a/tests/test_x.py b/tests/test_x.py\n"
+        "new file mode 120000\n"
+        "--- /dev/null\n+++ b/tests/test_x.py\n@@ -0,0 +1 @@\n"
+        "+../evals/tasks/x/hidden_tests/test_secret.py\n\\ No newline at end of file\n"
+    )
+    with pytest.raises(run.PipelineError, match="symlink"):
+        run.reject_symlinks(patch, tmp_path, [])
+
+
+def test_a_symlink_among_changed_paths_is_refused(tmp_path):
+    repo = _repo_with_hidden_test(tmp_path)
+    (repo / "tests/test_x.py").symlink_to("../evals/tasks/x/hidden_tests/test_secret.py")
+    with pytest.raises(run.PipelineError, match="tests/test_x.py"):
+        run.reject_symlinks("", repo, ["tests/test_x.py"])
+    run.reject_symlinks("", repo, ["src/a.py"])  # plain files are fine
+
+
+def test_counts_come_from_the_junit_report_not_stdout(tmp_path):
+    report = tmp_path / "report.xml"
+    report.write_text(
+        '<testsuites><testsuite name="pytest" tests="6" failures="2" errors="1" '
+        'skipped="1"></testsuite></testsuites>'
+    )
+    counts = run.junit_counts(report)
+    assert counts == {"tests": 6, "failures": 2, "errors": 1, "skipped": 1, "passed": 2}
+    assert run.counts_summary(counts) == "2 failed, 2 passed, 1 errors, 1 skipped"
+    assert run.junit_counts(tmp_path / "missing.xml") == {}
+    assert run.counts_summary({}) == "no results"
 
 
 def test_review_round_entry_follows_the_progress_template():
