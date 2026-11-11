@@ -60,10 +60,18 @@ def check_max_loss(history: AccountHistory, config: ChallengeConfig) -> RuleResu
                 breached_at=snapshot.at,
             )
 
+    if not history.snapshots:
+        return RuleResult(
+            "max_loss",
+            RuleStatus.PASSED,
+            f"No account activity yet; the overall loss limit is {limit:,.2f}.",
+        )
+
+    lowest = min(snapshot.equity for snapshot in history.snapshots)
     return RuleResult(
         "max_loss",
         RuleStatus.PASSED,
-        f"Equity never fell below the overall loss limit of {limit:,.2f}.",
+        f"Lowest equity was {lowest:,.2f}, at or above the overall loss limit of {limit:,.2f}.",
     )
 
 
