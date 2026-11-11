@@ -21,6 +21,18 @@ Newest entry at the top. Each session adds one entry using this template:
 
 ---
 
+## 2026-11-11 — Harness: hosted check feedback (no feature)
+- Agent/model: Claude Code (Opus 5.5), from the reviewer agent's findings on PRs #3 and #4
+- Done: the hosted orchestrator's checks run in a copy without `evals/`, refuse
+  symlinks, and send the agent only lint output and pass/fail (counts come from the
+  junit report, for the log only). Mount path and budget unit verified against the
+  Managed Agents docs and pinned by tests. Review rounds update progress.md and the
+  PR body; Ctrl-C still logs the run.
+- Tests: all pass, lint clean: yes
+- Problems / surprises: agent code still runs on the host during the checks, so
+  pass/fail is a ~1 bit per retry side channel until the checks run in a container.
+- Next: `ant apply` the hosted agents, then a first hosted run on F-003.
+
 ## 2026-11-10 — F-002 Max daily loss rule
 - Agent/model: Claude Code (Opus 5.5)
 - Done: `check_max_daily_loss` per spec R1. Day-start balance carries over from the

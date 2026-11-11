@@ -58,14 +58,21 @@ ant apply agents/test-writer.md agents/implementer.md environments/challenge-eng
   with `ant apply`; IDs go to `claude-lock.json`. Editing a file and re-applying makes
   a new agent version.
 - **No access to the hidden tests.** The repo is uploaded as a tarball without
-  `evals/`. The sandbox has no web access.
+  `evals/`. The sandbox has no web access. The orchestrator's own checks run the
+  agent's code locally, so they run in a copy without `evals/`, patches that add
+  symlinks are refused, and only lint output and whether the tests pass go back to
+  the agent (it reruns the tests in its sandbox for details). The agent's code still
+  runs on your machine during those checks, so it could read `evals/` by absolute
+  path and signal through pass/fail, about one bit per retry. A container for the
+  checks closes that: roadmap item 4.
 - **Limits enforced in code.** Every write, edit and bash call is `always_ask`; the
   orchestrator answers each one with [harness/policy.py](harness/policy.py).
 - **Hard spending cap per session** (`--budget`), enforced by the platform.
 - **Review loop.** After the PR opens, the orchestrator waits for the reviewer. On
   *changes requested* it sends the review and inline comments to the implementer's
   still-open session, re-runs the checks, pushes the fix, and waits again, up to
-  `--review-rounds` times. Approved, commented or out of rounds: a human takes over.
+  `--review-rounds` times. Each round adds a fix commit and a `progress.md` entry and
+  updates the PR description. Approved, commented or out of rounds: a human takes over.
 
 **Watching and steering a hosted agent:**
 
