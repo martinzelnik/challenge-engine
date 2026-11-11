@@ -43,8 +43,28 @@ def check_max_daily_loss(history: AccountHistory, config: ChallengeConfig) -> Ru
 
 
 def check_max_loss(history: AccountHistory, config: ChallengeConfig) -> RuleResult:
-    """R2. Feature F-003."""
-    raise NotImplementedError("F-003")
+    """R2. Equity must never fall strictly below initial_balance * (1 - max_loss_pct).
+
+    The limit is fixed: profits do not raise it. The first breaching snapshot fails the rule.
+    """
+    limit = config.initial_balance * (1 - config.max_loss_pct)
+
+    for snapshot in history.snapshots:
+        if snapshot.equity < limit:
+            return RuleResult(
+                "max_loss",
+                RuleStatus.FAILED,
+                f"Equity fell to {snapshot.equity:,.2f}, below the overall loss limit of "
+                f"{limit:,.2f} ({config.max_loss_pct:.2%} of the initial balance of "
+                f"{config.initial_balance:,.2f}).",
+                breached_at=snapshot.at,
+            )
+
+    return RuleResult(
+        "max_loss",
+        RuleStatus.PASSED,
+        f"Equity never fell below the overall loss limit of {limit:,.2f}.",
+    )
 
 
 def check_profit_target(history: AccountHistory, config: ChallengeConfig) -> RuleResult:
