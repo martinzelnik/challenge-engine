@@ -21,6 +21,21 @@ Newest entry at the top. Each session adds one entry using this template:
 
 ---
 
+## 2026-11-19 — Harness: review-responder for PR comments (no feature)
+- Agent/model: Claude Code (Opus 5.5)
+- Done: new review-responder role (`.claude/agents/review-responder.md`, policy
+  `REVIEW_RESPONDER`: src/ and tests/, pytest and ruff) and `harness/address_comments.py`.
+  It answers trusted review comments, checks the fix in code (paths, no removed tests or
+  assertions, green checks), commits, pushes feat/* and replies to each comment. Chained
+  from `run_feature --review-rounds N`, and in CI by `address-comments.yml` (opt-in).
+  Also fixed the hosted review loop, which skipped the reviewer's inline comments
+  (they come from claude[bot], not github-actions[bot]).
+- Tests: all pass, lint clean: yes. Dry-run against a scratch clone with a stand-in
+  agent: a valid fix was committed; a fix that removed assertions was refused and discarded.
+- Problems / surprises: as in the other pipelines, agent-written code runs during the
+  checks with ANTHROPIC_API_KEY in the environment (roadmap item 4).
+- Next: set AUTO_ADDRESS_COMMENTS and AGENT_PUSH_TOKEN, then watch a real PR.
+
 ## 2026-11-11 — Harness: hosted check feedback (no feature)
 - Agent/model: Claude Code (Opus 5.5), from the reviewer agent's findings on PRs #3 and #4
 - Done: the hosted orchestrator's checks run in a copy without `evals/`, refuse

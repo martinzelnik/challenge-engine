@@ -46,6 +46,7 @@ import anthropic
 
 from .. import pipeline, policy
 from ..pipeline import PipelineError, RoleStats
+from ..review_comments import REVIEW_BOTS
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCK_FILE = ROOT / "claude-lock.json"
@@ -563,7 +564,8 @@ def review_feedback(pr: int, review: dict, sha: str) -> str:
     comments = [
         c
         for c in gh_json(["api", f"repos/{repo_name()}/pulls/{pr}/comments"]) or []
-        if c["user"]["login"] == "github-actions[bot]" and c.get("commit_id") == sha
+        # inline comments come from claude[bot], the verdict from github-actions[bot]
+        if c["user"]["login"] in REVIEW_BOTS and c.get("commit_id") == sha
     ]
     inline = [
         f"- {c['path']}:{c.get('line') or c.get('original_line')}: {c['body']}" for c in comments

@@ -1,0 +1,154 @@
+# Review-responder: answers review comments on agent-pipeline PRs.
+#
+# Runs after the "PR review" workflow (so it sees the CI reviewer's comments),
+# and when someone with write access submits a review or comments on the PR.
+# Off until the repo variable AUTO_ADDRESS_COMMENTS is "true".
+#
+# Two jobs, so the agent never holds a write token:
+#   respond: the agent fixes what's valid (harness/address_comments.py --no-push).
+#            Read-only token. Hands over the fix as a git bundle plus the replies.
+#   publish: pushes the fix with AGENT_PUSH_TOKEN (a fine-grained PAT or app token
+#            with contents: write on this repo; a push with the workflow token
+#            wouldn't re-run CI) and replies with the workflow token.
+# Loops are bounded: --max-rounds fix commits per PR, and replies carry a marker
+# so no comment is answered twice.
+
+name: Address review comments
+
+on:
+  workflow_run:
+    workflows: ["PR review"]
+    types: [completed]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: address-comments-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  respond:
+    if: >-
+      vars.AUTO_ADDRESS_COMMENTS == 'true' && (
+        (github.event_name == 'workflow_run' &&
+          github.event.workflow_run.event == 'pull_request' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          startsWith(github.event.workflow_run.head_branch, 'feat/') &&
+          github.event.workflow_run.pull_requests[0].number) ||
+        (github.event_name == 'pull_request_review' &&
+          github.event.review.user.type != 'Bot' &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association) &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          startsWith(github.event.pull_request.head.ref, 'feat/')) ||
+        (github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request &&
+          github.event.comment.user.type != 'Bot' &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      commit: ${{ steps.respond.outputs.commit }}
+      branch: ${{ steps.respond.outputs.branch }}
+    env:
+      PR: ${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number }}
+    steps:
+      # main's harness, not the PR's; address_comments refuses PRs that change harness files.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -e ".[dev,agents]"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Review-responder
+        id: respond
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ runner.temp }}/plan.json
+        run: |
+          status=0
+          .venv/bin/python -m harness.address_comments "$PR" --no-push --plan-out "$PLAN" || status=$?
+          if [ -f "$PLAN" ]; then
+            commit=$(jq -r '.commit // empty' "$PLAN")
+            branch=$(jq -r '.branch' "$PLAN")
+            echo "commit=$commit" >> "$GITHUB_OUTPUT"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+            mkdir -p handoff && cp "$PLAN" handoff/
+            if [ -n "$commit" ]; then git bundle create handoff/fix.bundle "origin/$branch..$branch"; fi
+          fi
+          exit $status
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && hashFiles('handoff/plan.json') != '' }}
+        with:
+          name: review-responder
+          path: handoff/
+          retention-days: 7
+
+  publish:
+    needs: respond
+    if: ${{ !cancelled() && needs.respond.result != 'skipped' && needs.respond.outputs.branch != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      PR: ${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number }}
+      BRANCH: ${{ needs.respond.outputs.branch }}
+      COMMIT: ${{ needs.respond.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: review-responder
+          path: handoff
+
+      - name: Push the fix
+        if: env.COMMIT != ''
+        env:
+          PUSH_TOKEN: ${{ secrets.AGENT_PUSH_TOKEN }}
+        run: |
+          if [ -z "$PUSH_TOKEN" ]; then
+            echo "::error::Set the AGENT_PUSH_TOKEN secret so the fix can be pushed and CI re-runs."
+            exit 1
+          fi
+          case "$BRANCH" in feat/*) ;; *) echo "::error::Not a feat/* branch: $BRANCH"; exit 1 ;; esac
+          git fetch -q handoff/fix.bundle "$BRANCH"
+          # A plain push: if the branch moved meanwhile, it's rejected rather than overwritten.
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "FETCH_HEAD:refs/heads/$BRANCH"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Reply to the comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pip install -q -e ".[agents]"
+          python -m harness.address_comments "$PR" --post-replies handoff/plan.json

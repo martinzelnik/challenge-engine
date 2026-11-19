@@ -42,6 +42,16 @@ IMPLEMENTER = Role(
     prompt_file=".claude/agents/implementer.md",
 )
 
+# Answers PR review comments. It may add tests as well as fix code, because
+# reviewers often ask for a missing test; the orchestrator refuses a fix that
+# removes or rewrites an existing assertion or drops a test.
+REVIEW_RESPONDER = Role(
+    name="review-responder",
+    writable=("src/challenge_engine/", "tests/"),
+    commands=(".venv/bin/pytest", ".venv/bin/ruff"),
+    prompt_file=".claude/agents/review-responder.md",
+)
+
 
 def _relative(path: str, root: Path) -> str | None:
     """Repo-relative POSIX path, or None if it points outside the repo."""

@@ -16,6 +16,7 @@ from pathlib import Path
 
 FEATURE_LIST = "feature_list.json"
 PROGRESS = "progress.md"
+RUN_LOG = "logs/agent-runs.jsonl"
 
 
 class PipelineError(Exception):
@@ -188,7 +189,9 @@ def changed_paths(root: Path) -> list[str]:
 
 
 def require_clean_tree(root: Path) -> None:
-    if changed_paths(root):
+    # A run that commits nothing still logs itself; that line rides along with
+    # the next commit instead of blocking the next run.
+    if [p for p in changed_paths(root) if p != RUN_LOG]:
         raise PipelineError("Working tree has uncommitted changes. Commit or stash them first.")
 
 

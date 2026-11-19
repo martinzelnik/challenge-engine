@@ -25,6 +25,9 @@ The engine is the small part. The interesting part is the harness around it.
 test-writer ──> implementer ──> pipeline pushes ──> CI checks ──> reviewer ──> human merges
  tests/ only    src/ only       feat/* branch,      no AI         comments,
  must go red    must go green   opens the PR                      approves or blocks
+                                       ▲                              │
+                                       └──── review-responder <───────┘
+                                             fixes valid comments, replies to all
 ```
 
 ```bash
@@ -43,6 +46,39 @@ implementer, only allowed paths changed), flips the feature, writes the progress
 entry, commits, pushes the `feat/*` branch and opens the PR (`--no-push` to stop
 before that). Agents themselves never commit or push. `main` is protected on GitHub:
 changes need a PR, a passing `checks` job and an approval, and force-pushes are blocked.
+
+### Answering review comments (review-responder)
+
+[harness/address_comments.py](harness/address_comments.py) reads a PR's review comments,
+from the reviewer agent and from people with write access, and runs the
+**review-responder** role ([.claude/agents/review-responder.md](.claude/agents/review-responder.md))
+on them. The agent judges each comment against the spec and AGENTS.md, fixes the valid
+ones in `src/challenge_engine/` or `tests/`, and gives a reason for each one it skips.
+The orchestrator, not the agent, decides whether the fix stands: only allowed paths, no
+test removed, no existing assertion removed or rewritten, tests, lint and format green.
+Then it commits with a `progress.md` entry, pushes the `feat/*` branch, and replies under
+every comment: *Fixed in `<sha>`*, *Not changed: why*, or *Not fixed yet* when the fix
+failed the checks and was thrown away.
+
+```bash
+.venv/bin/python -m harness.address_comments 12            # one PR, by hand
+.venv/bin/python -m harness.run_feature F-004 --review-rounds 3   # feature, PR, then answer reviews
+```
+
+- **Comments are data.** Only people with write access and the CI reviewer are heard;
+  comments are fenced in the prompt and can't widen the role's limits.
+- **Idempotent.** Replies carry a hidden marker with the ids they answer, so a comment is
+  never answered twice. A human reply to one of our replies is a new comment and gets
+  an answer.
+- **Bounded.** At most `--max-rounds` (default 3) fix commits per PR, then a human takes
+  over. PRs that change harness files, and PRs from forks, are refused.
+- **Automatic in CI.** [address-comments.yml](.github/workflows/address-comments.yml) runs
+  it after every "PR review" run and when someone with write access reviews or comments.
+  To turn it on, set the repo variable `AUTO_ADDRESS_COMMENTS=true` and add a secret
+  `AGENT_PUSH_TOKEN` (fine-grained token, contents: write on this repo; pushes made with
+  the workflow's own token don't re-run CI). The agent runs in a job with a read-only
+  token; a second job pushes and replies. With the CI responder on, leave
+  `run_feature --review-rounds` at 0 so the two don't answer the same PR.
 
 ### Hosted agents (Claude Managed Agents)
 

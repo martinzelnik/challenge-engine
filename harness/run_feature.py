@@ -14,8 +14,9 @@ What it does:
    entry and commits.
 4. Logs each agent's model, cost, turns, time and denied tool calls to
    logs/agent-runs.jsonl.
-
-Pushing and opening the PR stay with a human; the reviewer agent runs in CI.
+5. Pushes the feat/* branch and opens the PR; the reviewer agent runs in CI.
+   With --review-rounds N it then waits for the review and runs the
+   review-responder (harness/address_comments.py) on the comments, up to N times.
 Each role's limits are enforced in code by harness/policy.py on every tool call.
 """
 
@@ -58,7 +59,12 @@ def role_prompt(role: policy.Role) -> str:
 
 
 def make_options(
-    role: policy.Role, model: str, max_turns: int, budget: float, denials: list[dict]
+    role: policy.Role,
+    model: str,
+    max_turns: int,
+    budget: float,
+    denials: list[dict],
+    output_format: dict[str, Any] | None = None,
 ) -> ClaudeAgentOptions:
     async def guard(input_data: dict[str, Any], tool_use_id: str | None, context: Any) -> dict:
         tool = input_data.get("tool_name", "")
@@ -85,6 +91,7 @@ def make_options(
         allowed_tools=list(policy.ALLOWED_TOOLS),
         permission_mode="dontAsk",  # anything not allowed is refused, never prompted
         hooks={"PreToolUse": [HookMatcher(hooks=[guard])]},
+        output_format=output_format,  # a JSON schema the final answer must match
     )
 
 
@@ -270,10 +277,21 @@ async def main_async(args: argparse.Namespace) -> int:
     if not args.push:
         print(f"Not pushed (--no-push). To publish:\n  git push -u origin {branch}")
         return 0
-    return publish(feature, branch, record, test_summary)
+    code, pr = publish(feature, branch, record, test_summary)
+    if code or not pr or not args.review_rounds:
+        return code
+    from . import address_comments  # imports this module, so not at the top
+
+    args.max_rounds = args.review_rounds
+    try:
+        await address_comments.review_loop(pr, args)
+    except PipelineError as e:
+        print(f"Review loop stopped: {e}\nThe PR is open; a human takes it from here.")
+        return 1
+    return 0
 
 
-def publish(feature: dict, branch: str, record: dict, test_summary: str) -> int:
+def publish(feature: dict, branch: str, record: dict, test_summary: str) -> tuple[int, int | None]:
     """Push the feature branch and open a PR against main; the reviewer runs in CI.
 
     Only feature branches are pushed, never main; branch protection on GitHub
@@ -284,7 +302,7 @@ def publish(feature: dict, branch: str, record: dict, test_summary: str) -> int:
     push = pipeline.run(["git", "push", "-u", "origin", branch], ROOT, check=False)
     if push.returncode != 0:
         print(f"Push failed, the work is safe locally:\n{push.stderr}")
-        return 1
+        return 1, None
     title = f"feat({feature['id']}): {feature['title']}"
     body = pipeline.pr_body(feature, record["roles"], test_summary, record["commits"])
     pr = pipeline.run(
@@ -306,10 +324,10 @@ def publish(feature: dict, branch: str, record: dict, test_summary: str) -> int:
     )
     if pr.returncode != 0:
         print(f"Pushed, but opening the PR failed:\n{pr.stderr}")
-        return 1
+        return 1, None
     url = pr.stdout.strip().splitlines()[-1]
     print(f"PR opened: {url}\nThe reviewer agent reviews it in CI; watch with: gh run watch")
-    return 0
+    return 0, int(url.rstrip("/").rsplit("/", 1)[-1])
 
 
 def main() -> int:
@@ -323,6 +341,14 @@ def main() -> int:
         dest="push",
         action="store_false",
         help="Stop after the local commit instead of pushing and opening a PR",
+    )
+    parser.add_argument(
+        "--review-rounds",
+        type=int,
+        default=0,
+        help="After opening the PR, wait for the reviewer and let the review-responder "
+        "answer its comments, up to this many fix commits (0: stop at the PR). Leave at 0 "
+        "when the CI responder (address-comments.yml) is enabled.",
     )
     args = parser.parse_args()
     try:
