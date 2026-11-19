@@ -13,6 +13,7 @@ can't start a run.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -138,12 +139,21 @@ class RunManager:
             process = self.process
         if process is None:
             raise StartError("Nothing is running.")
-        os.killpg(process.pid, signal.SIGINT)
         try:
-            process.wait(timeout=20)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGTERM)
+            os.killpg(process.pid, signal.SIGINT)
+        except ProcessLookupError:
+            return {"stopping": False}  # it exited on its own; _wait records the exit code
+        threading.Thread(target=self._escalate, args=(process,), daemon=True).start()
         return {"stopping": True}
+
+    @staticmethod
+    def _escalate(process: subprocess.Popen, grace: float = 20) -> None:
+        """SIGTERM the run if Ctrl-C hasn't stopped it within `grace` seconds."""
+        try:
+            process.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGTERM)
 
 
 class Dashboard:
@@ -248,7 +258,11 @@ def make_handler(app: Dashboard) -> type[BaseHTTPRequestHandler]:
                 path = data.safe_log_path(app.log_dirs, query.get("name", ""))
                 if path is None:
                     return self._error(HTTPStatus.NOT_FOUND, "No such log.")
-                text, offset = data.read_from(path, int(query.get("offset", "0") or 0))
+                try:
+                    offset = max(int(query.get("offset", "0") or 0), 0)
+                except ValueError:
+                    return self._error(HTTPStatus.BAD_REQUEST, "offset must be a whole number.")
+                text, offset = data.read_from(path, offset)
                 return self._json({"text": text, "offset": offset})
             if url.path == "/api/transcript":
                 path = data.find_transcript(query.get("session", ""), app.projects_dir)

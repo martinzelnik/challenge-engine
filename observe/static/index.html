@@ -173,6 +173,8 @@ dialog .body { padding: 12px 16px; overflow: auto; max-height: calc(86vh - 60px)
 <script>
 const TOKEN = "__TOKEN__";
 const $ = (id) => document.getElementById(id);
+// links from the ledger, gh or run logs: only http(s), so a tampered entry can't become javascript:
+const safeUrl = (u) => /^https?:\/\//i.test(String(u ?? "")) ? esc(u) : "#";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const usd = (n) => n == null ? "–" : "$" + Number(n).toFixed(2);
 const secs = (s) => s == null ? "–" : s < 90 ? Math.round(s) + "s" : (s / 60).toFixed(1) + "m";
@@ -240,7 +242,7 @@ function branchLink(f) {
 }
 
 function prLink(f) {
-  if (f.pr) return `<a href="${esc(f.pr.url)}" target="_blank" rel="noopener">#${f.pr.number}</a> <span class="muted">${esc((f.pr.state || "").toLowerCase())}</span>`;
+  if (f.pr) return `<a href="${safeUrl(f.pr.url)}" target="_blank" rel="noopener">#${f.pr.number}</a> <span class="muted">${esc((f.pr.state || "").toLowerCase())}</span>`;
   if (!state.repo || !f.branch_ref) return `<span class="muted">–</span>`;
   const q = encodeURIComponent(`is:pr head:${f.branch}`);
   return `<a href="https://github.com/${state.repo}/pulls?q=${q}" target="_blank" rel="noopener">find PR</a>`;
@@ -278,7 +280,7 @@ function renderRuns() {
       const sid = x.session_id ? `<button data-session="${esc(x.session_id)}" data-label="${esc(r.feature + " " + x.role)}">Transcript</button>` : "";
       return `<div class="role-card">
         <h3>${esc(x.role)} <span class="muted mono">${esc(x.model)}</span> <span class="muted">${cost(x.cost_usd)} · ${x.turns ?? "?"} turns · ${secs(x.seconds)} · ${x.attempts || 1} attempt(s)</span> ${sid}
-          ${x.console_url ? `<a href="${esc(x.console_url)}" target="_blank" rel="noopener">Watch in Console</a>` : ""}</h3>
+          ${x.console_url ? `<a href="${safeUrl(x.console_url)}" target="_blank" rel="noopener">Watch in Console</a>` : ""}</h3>
         ${den ? `<div class="muted" style="font-size:12px">Denied tool calls</div><ul class="denylist">${den}</ul>` : ""}
         ${x.summary ? `<div class="muted" style="font-size:12px;margin-top:8px">Agent's own summary (last 2,000 chars)</div><div class="summary">${esc(x.summary)}</div>` : ""}
       </div>`;
@@ -286,7 +288,7 @@ function renderRuns() {
     const extras = [
       r.error ? `<div class="msg bad">${esc(r.error)}</div>` : "",
       r.cost_unverified ? `<div class="note">⚠ Hosted run: the logged cost is the session's list_cost amount, which looks like cents rather than dollars. It is shown as logged and left out of the spend totals.</div>` : "",
-      r.console_url ? `<div><a href="${esc(r.console_url)}" target="_blank" rel="noopener">Watch in Console</a></div>` : "",
+      r.console_url ? `<div><a href="${safeUrl(r.console_url)}" target="_blank" rel="noopener">Watch in Console</a></div>` : "",
       (r.commits || []).length ? `<div class="muted">Commits: <span class="mono">${(r.commits || []).map(esc).join(", ")}</span> on <span class="mono">${esc(r.branch)}</span></div>` : "",
     ].join("");
     return `<tr><td colspan="8" style="padding:0">
@@ -334,7 +336,7 @@ function renderControl() {
   if (!a) { $("active").innerHTML = ""; return; }
   const status = running ? `<span class="pill warn">running</span>` : a.exit_code === 0 ? `<span class="pill ok">finished</span>` : `<span class="pill bad">exited ${esc(a.exit_code)}</span>`;
   $("active").innerHTML = `<div class="role-card" style="margin-bottom:12px">
-    <h3>${esc(a.feature)} ${status} <span class="muted">${a.mode} · started ${ago(a.started)}</span></h3>
+    <h3>${esc(a.feature)} ${status} <span class="muted">${esc(a.mode)} · started ${ago(a.started)}</span></h3>
     <div class="mono muted" style="word-break:break-all">${esc(a.command)}</div>
     ${running ? `<div style="margin-top:8px"><button class="danger" id="stopbtn">Stop (Ctrl-C)</button></div>` : ""}
   </div>`;
@@ -360,7 +362,7 @@ function renderLogPicker() {
   sel.value = logName;
   const cur = logs.find((l) => l.name === logName);
   if (cur) {
-    const links = cur.links.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.label)}</a>`).join(" · ");
+    const links = cur.links.map((x) => `<a href="${safeUrl(x.url)}" target="_blank" rel="noopener">${esc(x.label)}</a>`).join(" · ");
     $("logmeta").innerHTML = `${esc(cur.branch || "")} · ${cur.phase ? "phase: " + esc(cur.phase) + " · " : ""}updated ${ago(cur.modified)}${links ? " · " + links : ""}`;
   }
 }

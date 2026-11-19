@@ -431,3 +431,28 @@ def test_start_refuses_a_dirty_tree(tmp_path: Path):
     (tmp_path / "stray.txt").write_text("x")
     with pytest.raises(StartError, match="uncommitted"):
         RunManager(tmp_path, "/py").start({"feature": "F-005"}, FEATURES)
+
+
+def test_log_endpoint_rejects_a_bad_offset(server, tmp_path: Path):
+    app, base = server
+    log_dir = tmp_path / data.RUN_LOG_DIR
+    log_dir.mkdir(parents=True)
+    (log_dir / "F-005.log").write_text("hello\n")
+    status, body = _request(base + "/api/log?name=F-005.log&offset=abc")
+    assert status == 400 and "offset" in body
+    status, body = _request(base + "/api/log?name=F-005.log&offset=0")
+    assert status == 200 and json.loads(body)["text"] == "hello\n"
+
+
+def test_stop_after_the_run_already_exited_is_not_an_error(tmp_path: Path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    fake = tmp_path.parent / f"{tmp_path.name}-python"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    manager = RunManager(tmp_path, str(fake))
+    manager.start({"feature": "F-005"}, FEATURES)
+    process = manager.process
+    process.wait()
+    time.sleep(0.2)
+    manager.process = process  # as if Stop raced the exit, before _wait cleared it
+    assert manager.stop() == {"stopping": False}
