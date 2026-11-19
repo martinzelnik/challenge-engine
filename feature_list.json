@@ -52,7 +52,7 @@
         "PASSED only when every rule passed",
         "IN_PROGRESS otherwise"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F-006",

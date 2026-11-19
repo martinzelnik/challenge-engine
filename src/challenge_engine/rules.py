@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from .models import AccountHistory, ChallengeConfig, RuleResult, RuleStatus, Verdict
+from .models import AccountHistory, ChallengeConfig, RuleResult, RuleStatus, Verdict, VerdictStatus
 
 
 def check_max_daily_loss(history: AccountHistory, config: ChallengeConfig) -> RuleResult:
@@ -106,5 +106,19 @@ def check_min_trading_days(history: AccountHistory, config: ChallengeConfig) -> 
 
 
 def evaluate(history: AccountHistory, config: ChallengeConfig) -> Verdict:
-    """Overall verdict. Feature F-005."""
-    raise NotImplementedError("F-005")
+    """Overall verdict: run R1-R4 in order and combine their statuses."""
+    results = (
+        check_max_daily_loss(history, config),
+        check_max_loss(history, config),
+        check_profit_target(history, config),
+        check_min_trading_days(history, config),
+    )
+    failed = [r for r in results if r.status is RuleStatus.FAILED]
+    if failed:
+        breaches = [r.breached_at for r in failed if r.breached_at is not None]
+        # Aware datetimes compare as instants, so mixed UTC offsets are handled.
+        failed_at = min(breaches) if breaches else None
+        return Verdict(VerdictStatus.FAILED, results, failed_at)
+    if all(r.status is RuleStatus.PASSED for r in results):
+        return Verdict(VerdictStatus.PASSED, results)
+    return Verdict(VerdictStatus.IN_PROGRESS, results)
