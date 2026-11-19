@@ -85,6 +85,30 @@ ant apply agents/test-writer.md agents/implementer.md environments/challenge-eng
 
 ### Observing the agents
 
+**Dashboard.** One local page that pulls all of the below together, and can start
+or stop a run:
+
+```bash
+.venv/bin/python -m observe            # http://127.0.0.1:8765
+.venv/bin/python -m observe --log-dir ~/old-run-logs --no-github
+```
+
+- **Features:** each feature's stage (failing tests, code, PR, reviewer approval,
+  merged), its branch and commits, and what its runs cost.
+- **Run log:** the pipeline's live output, tailed as it runs, with denied calls in
+  red and a "denied only" filter. Runs started from the dashboard log to `logs/runs/`.
+- **Runs:** the run ledger, including runs on branches that aren't merged yet; open
+  one for each agent's summary, its denied calls and its full transcript.
+- **Denied tool calls:** grouped by role and reason across runs, so friction that
+  repeats every run stands out.
+- **Control:** start a feature (local or hosted agents, budget, push or not) and
+  stop it with a Ctrl-C. One run at a time, clean tree only.
+
+Standard library only; it binds to 127.0.0.1, rejects non-local `Host` headers and
+needs a per-start token for anything that changes state. PR and review status come
+from `gh` when it's installed and signed in. Merged status comes from `origin/main`,
+so `git fetch` to refresh it.
+
 | What | Where |
 |---|---|
 | Live: every tool call and every denied call, per role | Terminal output of `run_feature` |

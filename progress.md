@@ -21,6 +21,19 @@ Newest entry at the top. Each session adds one entry using this template:
 
 ---
 
+## 2026-11-19 — Tooling: agent pipeline dashboard (not a feature)
+- Agent/model: Claude Code (project thread), at Martin's request
+- Done: `observe/`, a local stdlib web dashboard: feature stages, live run log
+  tail, run ledger (merged with unmerged branches' ledgers), denials summary,
+  transcripts by session id, start/stop a run. `logs/runs/` is gitignored so a
+  dashboard-started run doesn't dirty the tree.
+- Tests: full suite green, lint clean: yes (tests/test_observe.py)
+- Problems / surprises: hosted runs log `cost_usd` from `list_cost.amount`, which
+  looks like cents ($29.00 for a test-writer whose local runs cost ~$0.45). The
+  dashboard flags those and leaves them out of spend; the fix belongs in
+  harness/managed/run.py (humans only).
+- Next: Martin to decide on the hosted cost unit fix.
+
 ## 2026-11-19 — F-005 Overall verdict (evaluate)
 - Agent/model: agent pipeline: test-writer (claude-opus-5-5, 15 turns, $0.43, 58s); implementer (claude-opus-5-5, 17 turns, $0.27, 30s)
 - Done: test-writer wrote failing tests from the spec; implementer made them pass.

@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent pipeline</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #5d6673; --line: #e3e6eb;
+  --accent: #3b5bdb; --ok: #2b8a3e; --ok-bg: #e6f4ea; --bad: #c92a2a; --bad-bg: #fdecec;
+  --warn: #b35c00; --warn-bg: #fff3e0; --idle: #8a93a0; --idle-bg: #eef0f3;
+  --code-bg: #0f1419; --code-ink: #d6dde6; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1116; --panel: #161b22; --ink: #e6edf3; --muted: #8b96a5; --line: #262d36;
+    --accent: #7c9cff; --ok: #4cc26b; --ok-bg: #12301c; --bad: #ff6b6b; --bad-bg: #3a1618;
+    --warn: #f0a24b; --warn-bg: #3a2810; --idle: #6e7781; --idle-bg: #1f252d;
+    --code-bg: #0a0d11; --code-ink: #c9d1d9;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header { display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+  border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 16px; margin: 0; }
+header .meta { color: var(--muted); font-size: 13px; }
+header .spacer { flex: 1; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.dot.stale { background: var(--bad); }
+main { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; display: grid; gap: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+  margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+.panel h2 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.kpi .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kpi .l { color: var(--muted); font-size: 12px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 500; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.scroll-x { overflow-x: auto; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.pill.ok { background: var(--ok-bg); color: var(--ok); }
+.pill.bad { background: var(--bad-bg); color: var(--bad); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.idle { background: var(--idle-bg); color: var(--idle); }
+.stages { display: flex; gap: 4px; align-items: center; }
+.stage { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--idle-bg); color: var(--idle); white-space: nowrap; }
+.stage.done { background: var(--ok-bg); color: var(--ok); }
+.stage.bad { background: var(--bad-bg); color: var(--bad); }
+.stage.now { background: var(--warn-bg); color: var(--warn); }
+.sep { color: var(--line); }
+.mono { font-family: var(--mono); font-size: 12px; }
+.muted { color: var(--muted); }
+.grid2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+.log { background: var(--code-bg); color: var(--code-ink); font-family: var(--mono); font-size: 12px;
+  border-radius: 8px; padding: 10px 12px; height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.log .l-denied { color: #ff7b72; }
+.log .l-phase { color: #79c0ff; font-weight: 600; }
+.log .l-start { color: #d2a8ff; font-weight: 600; }
+.log .l-milestone { color: #56d364; }
+.log .l-problem { color: #ffa657; }
+.log .l-link a { color: #79c0ff; }
+.log .role { color: #8b949e; }
+.log .tool { color: #e3b341; }
+.toolbar select { width: auto; max-width: 100%; }
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+select, input { width: 100%; min-width: 0; }
+input[type=checkbox] { width: auto; }
+select, input, button { font: inherit; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { color: var(--bad); border-color: var(--bad); }
+button:disabled { opacity: .5; cursor: default; }
+label.inline { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.form { display: grid; gap: 10px; }
+.form .row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; }
+.form .row > span { color: var(--muted); font-size: 13px; }
+.note { font-size: 12px; color: var(--muted); }
+.msg { font-size: 13px; padding: 8px 10px; border-radius: 6px; }
+.msg.bad { background: var(--bad-bg); color: var(--bad); }
+.msg.ok { background: var(--ok-bg); color: var(--ok); }
+details.run > summary { cursor: pointer; list-style: none; }
+details.run > summary::-webkit-details-marker { display: none; }
+.rundetail { padding: 8px 4px 12px 24px; display: grid; gap: 10px; }
+.role-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.role-card h3 { font-size: 13px; margin: 0 0 6px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.summary { white-space: pre-wrap; font-size: 13px; max-height: 220px; overflow: auto; background: var(--bg);
+  padding: 8px 10px; border-radius: 6px; }
+.denylist { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.bar { height: 8px; border-radius: 4px; background: var(--idle-bg); position: relative; min-width: 60px; }
+.bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--bad); }
+dialog { width: min(900px, 94vw); max-height: 86vh; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); color: var(--ink); padding: 0; }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog .head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+dialog .body { padding: 12px 16px; overflow: auto; max-height: calc(86vh - 60px); display: grid; gap: 8px; }
+.t-entry { border-left: 3px solid var(--line); padding: 4px 10px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.t-entry.assistant { border-color: var(--accent); }
+.t-entry.tool_use { border-color: var(--warn); font-family: var(--mono); font-size: 12px; }
+.t-entry.tool_result { border-color: var(--idle); font-family: var(--mono); font-size: 12px; color: var(--muted); max-height: 160px; overflow: auto; }
+.t-entry.err { border-color: var(--bad); color: var(--bad); }
+.empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent pipeline</h1>
+  <span class="meta" id="repo"></span>
+  <span class="spacer"></span>
+  <span class="meta" id="updated"></span>
+  <span class="dot" id="live" title="Live"></span>
+</header>
+<main>
+  <section class="kpis" id="kpis"></section>
+
+  <section class="panel">
+    <h2>Features <span class="hint muted">failing tests &rarr; code &rarr; PR &rarr; reviewer approval &rarr; merged</span></h2>
+    <div class="scroll-x"><table id="board"></table></div>
+  </section>
+
+  <section class="grid2">
+    <div class="panel">
+      <h2>Run log <span class="hint muted" id="logmeta"></span></h2>
+      <div class="toolbar">
+        <select id="logpick"></select>
+        <label class="inline"><input type="checkbox" id="onlydenied"> Denied calls only</label>
+        <label class="inline"><input type="checkbox" id="follow" checked> Follow</label>
+      </div>
+      <div class="log" id="log"><span class="muted">No run logs yet. Start a run, or pass --log-dir.</span></div>
+    </div>
+    <div class="panel">
+      <h2>Control</h2>
+      <div id="active"></div>
+      <div class="form" id="startform">
+        <div class="row"><span>Feature</span><select id="f-feature"></select></div>
+        <div class="row"><span>Agents</span>
+          <select id="f-mode"><option value="local">Local (Agent SDK)</option><option value="hosted">Hosted (Managed Agents)</option></select></div>
+        <div class="row"><span>Budget</span><input id="f-budget" type="number" min="0.5" max="20" step="0.5" value="2" title="Max USD per agent"></div>
+        <div class="row"><span></span><label class="inline"><input type="checkbox" id="f-push"> Push the branch and open a PR</label></div>
+        <div><button class="primary" id="startbtn">Start run</button></div>
+        <div class="note">Runs one feature through test-writer &rarr; implementer on a <span class="mono">feat/*</span> branch in this checkout. One run at a time; the working tree must be clean. Without push, it stops after the local commit.</div>
+      </div>
+      <div id="formmsg"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Runs <span class="hint muted">from logs/agent-runs.jsonl &middot; click a run for agent summaries, denials and transcripts</span></h2>
+    <div class="scroll-x" id="runs"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Denied tool calls <span class="hint muted">the role policy blocking an agent; a reason seen in every run is prompt friction</span></h2>
+    <div class="scroll-x"><table id="denials"></table></div>
+  </section>
+</main>
+
+<dialog id="transcript">
+  <div class="head"><strong id="t-title">Transcript</strong><button id="t-close">Close</button></div>
+  <div class="body" id="t-body"></div>
+</dialog>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = (id) => document.getElementById(id);
+// links from the ledger, gh or run logs: only http(s), so a tampered entry can't become javascript:
+const safeUrl = (u) => /^https?:\/\//i.test(String(u ?? "")) ? esc(u) : "#";
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const usd = (n) => n == null ? "–" : "$" + Number(n).toFixed(2);
+const secs = (s) => s == null ? "–" : s < 90 ? Math.round(s) + "s" : (s / 60).toFixed(1) + "m";
+const ago = (iso) => {
+  const t = typeof iso === "number" ? iso * 1000 : Date.parse(iso);
+  if (!t) return "";
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return "just now"; if (m < 60) return m + " min ago";
+  const h = Math.round(m / 60); if (h < 36) return h + " h ago";
+  return new Date(t).toLocaleDateString();
+};
+const when = (iso) => { const d = new Date(iso); return isNaN(d) ? esc(iso) : d.toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit"}); };
+
+const painted = {};
+let state = null, openRuns = new Set(), logName = null, logOffset = 0, logLines = [], userPickedLog = false;
+
+async function api(path, body) {
+  const opts = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json", "X-Token": TOKEN}, body: JSON.stringify(body)};
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function renderKpis(o) {
+  const items = [
+    [o.features_passing + " / " + o.features, "features passing"],
+    [o.runs_passed + " / " + o.runs, "pipeline runs passed"],
+    [usd(o.total_cost_usd), o.runs_unpriced ? `agent spend (excl. ${o.runs_unpriced} hosted run${o.runs_unpriced > 1 ? "s" : ""})` : "total agent spend"],
+    [usd(o.avg_cost_per_passed_run), "per passed run"],
+    [o.denials_per_run ?? "–", "denied calls per run"],
+  ];
+  $("kpis").innerHTML = items.map(([v, l]) => `<div class="kpi"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+}
+
+function featureStatus(f, active) {
+  if (active && active.running && active.feature === f.id) return `<span class="pill warn">running</span>`;
+  if (f.stages.merged) return `<span class="pill ok">merged</span>`;
+  if (f.changes_requested) return `<span class="pill bad">changes requested</span>`;
+  if (f.pr) return `<span class="pill warn">in review</span>`;
+  if (f.last_outcome === "failed") return `<span class="pill bad">run failed</span>`;
+  if (f.stages.code) return `<span class="pill warn">built, no PR</span>`;
+  if (f.stages.tests) return `<span class="pill warn">tests only</span>`;
+  return `<span class="pill idle">not started</span>`;
+}
+
+function stages(f) {
+  const names = [["tests","Tests red"],["code","Code green"],["pr","PR"],["review","Approved"],["merged","Merged"]];
+  const firstOpen = names.findIndex(([k]) => !f.stages[k]);
+  return `<div class="stages">` + names.map(([k, label], i) => {
+    let cls = f.stages[k] ? "done" : "";
+    if (!f.stages[k] && i === firstOpen) {
+      if (k === "review" && f.changes_requested) cls = "bad";
+      else if (f.last_outcome === "failed" && (k === "tests" || k === "code")) cls = "bad";
+      else if (i > 0) cls = "now";
+    }
+    return `<span class="stage ${cls}">${label}</span>`;
+  }).join(`<span class="sep">›</span>`) + `</div>`;
+}
+
+function branchLink(f) {
+  if (!f.branch_ref && !f.pr) return `<span class="muted mono">${esc(f.branch)}</span>`;
+  const href = state.repo ? `https://github.com/${state.repo}/tree/${encodeURIComponent(f.branch).replace(/%2F/g, "/")}` : null;
+  return href ? `<a class="mono" href="${href}" target="_blank" rel="noopener">${esc(f.branch)}</a>` : `<span class="mono">${esc(f.branch)}</span>`;
+}
+
+function prLink(f) {
+  if (f.pr) return `<a href="${safeUrl(f.pr.url)}" target="_blank" rel="noopener">#${f.pr.number}</a> <span class="muted">${esc((f.pr.state || "").toLowerCase())}</span>`;
+  if (!state.repo || !f.branch_ref) return `<span class="muted">–</span>`;
+  const q = encodeURIComponent(`is:pr head:${f.branch}`);
+  return `<a href="https://github.com/${state.repo}/pulls?q=${q}" target="_blank" rel="noopener">find PR</a>`;
+}
+
+function renderBoard() {
+  const rows = state.board.map((f) => {
+    const commits = f.commits.filter((c) => c.subject.includes(`(${f.id})`)).slice(0, 3)
+      .map((c) => `<div class="mono muted" title="${esc(c.at)}">${esc(c.sha)} ${esc(c.subject)}</div>`).join("");
+    return `<tr>
+      <td class="mono" style="white-space:nowrap">${esc(f.id)}</td>
+      <td>${esc(f.title)}${f.last_error ? `<div class="muted" style="font-size:12px">${esc(f.last_error)}</div>` : ""}</td>
+      <td>${featureStatus(f, state.active)}</td>
+      <td>${stages(f)}</td>
+      <td>${branchLink(f)}${commits}</td>
+      <td>${prLink(f)}</td>
+      <td class="num">${f.runs || "–"}</td>
+      <td class="num">${f.runs ? usd(f.cost_usd) : "–"}</td>
+      <td class="num">${f.runs ? f.denials : "–"}</td>
+    </tr>`;
+  }).join("");
+  $("board").innerHTML = `<tr><th>ID</th><th>Feature</th><th>Status</th><th>Stages</th><th>Branch &amp; commits</th><th>PR</th><th class="num">Runs</th><th class="num">Cost</th><th class="num">Denied</th></tr>${rows}`;
+}
+
+function renderRuns() {
+  if (!state.runs.length) { $("runs").innerHTML = `<div class="empty">No runs in logs/agent-runs.jsonl yet.</div>`; return; }
+  const max = Math.max(...state.runs.filter((r) => !r.cost_unverified).map((r) => r.total_cost_usd), 0.01);
+  const rows = state.runs.map((r, i) => {
+    const key = r.at + r.feature;
+    const cost = (n) => r.cost_unverified ? `<span title="Hosted runs log list_cost.amount, which looks like cents: $29.00 is probably $0.29. Not counted in spend.">${usd(n)} ⚠</span>` : usd(n);
+    const roles = (r.roles || []).map((x) => `${esc(x.role)} ${cost(x.cost_usd)} · ${x.turns ?? "?"} turns · ${secs(x.seconds)}${x.attempts > 1 ? ` · ${x.attempts} attempts` : ""}`).join("<br>");
+    const outcome = r.outcome === "passed" ? `<span class="pill ok">passed</span>` : `<span class="pill bad">${esc(r.outcome || "failed")}</span>`;
+    const detail = (r.roles || []).map((x) => {
+      const den = (x.denied_tool_calls || []).map((d) => `<li><span class="mono">${esc(d.tool)}</span>: ${esc(d.reason)}</li>`).join("");
+      const sid = x.session_id ? `<button data-session="${esc(x.session_id)}" data-label="${esc(r.feature + " " + x.role)}">Transcript</button>` : "";
+      return `<div class="role-card">
+        <h3>${esc(x.role)} <span class="muted mono">${esc(x.model)}</span> <span class="muted">${cost(x.cost_usd)} · ${x.turns ?? "?"} turns · ${secs(x.seconds)} · ${x.attempts || 1} attempt(s)</span> ${sid}
+          ${x.console_url ? `<a href="${safeUrl(x.console_url)}" target="_blank" rel="noopener">Watch in Console</a>` : ""}</h3>
+        ${den ? `<div class="muted" style="font-size:12px">Denied tool calls</div><ul class="denylist">${den}</ul>` : ""}
+        ${x.summary ? `<div class="muted" style="font-size:12px;margin-top:8px">Agent's own summary (last 2,000 chars)</div><div class="summary">${esc(x.summary)}</div>` : ""}
+      </div>`;
+    }).join("");
+    const extras = [
+      r.error ? `<div class="msg bad">${esc(r.error)}</div>` : "",
+      r.cost_unverified ? `<div class="note">⚠ Hosted run: the logged cost is the session's list_cost amount, which looks like cents rather than dollars. It is shown as logged and left out of the spend totals.</div>` : "",
+      r.console_url ? `<div><a href="${safeUrl(r.console_url)}" target="_blank" rel="noopener">Watch in Console</a></div>` : "",
+      (r.commits || []).length ? `<div class="muted">Commits: <span class="mono">${(r.commits || []).map(esc).join(", ")}</span> on <span class="mono">${esc(r.branch)}</span></div>` : "",
+    ].join("");
+    return `<tr><td colspan="8" style="padding:0">
+      <details class="run" data-key="${esc(key)}" ${openRuns.has(key) ? "open" : ""}>
+        <summary><table><tr>
+          <td style="width:130px">${when(r.at)}</td>
+          <td class="mono" style="width:60px">${esc(r.feature)}</td>
+          <td style="width:90px">${outcome}</td>
+          <td>${roles}</td>
+          <td class="num" style="width:80px">${cost(r.total_cost_usd)}</td>
+          <td style="width:90px"><div class="bar"><i style="width:${Math.min(100, 100 * r.total_cost_usd / max).toFixed(0)}%;background:${r.cost_unverified ? "var(--idle)" : "var(--accent)"}"></i></div></td>
+          <td class="num" style="width:70px">${secs(r.total_seconds)}</td>
+          <td class="num" style="width:70px" title="denied tool calls">${r.total_denials} denied</td>
+        </tr></table></summary>
+        <div class="rundetail">${extras}${detail}</div>
+      </details></td></tr>`;
+  }).join("");
+  $("runs").innerHTML = `<table>${rows}</table>`;
+  document.querySelectorAll("details.run").forEach((d) => d.addEventListener("toggle", () => {
+    d.open ? openRuns.add(d.dataset.key) : openRuns.delete(d.dataset.key);
+  }));
+  document.querySelectorAll("button[data-session]").forEach((b) => b.addEventListener("click", (e) => {
+    e.preventDefault(); showTranscript(b.dataset.session, b.dataset.label);
+  }));
+}
+
+function renderDenials() {
+  if (!state.denials.length) { $("denials").innerHTML = `<tr><td class="empty">No denied tool calls.</td></tr>`; return; }
+  const max = Math.max(...state.denials.map((d) => d.count));
+  const runs = state.runs.length;
+  $("denials").innerHTML = `<tr><th>Role</th><th>Tool</th><th>Reason</th><th class="num">Count</th><th></th><th class="num">In runs</th></tr>` +
+    state.denials.map((d) => `<tr><td>${esc(d.role)}</td><td class="mono">${esc(d.tool)}</td><td>${esc(d.reason)}</td>
+      <td class="num">${d.count}</td><td style="width:120px"><div class="bar"><i style="width:${(100 * d.count / max).toFixed(0)}%"></i></div></td>
+      <td class="num">${d.runs} / ${runs}</td></tr>`).join("");
+}
+
+function renderControl() {
+  const a = state.active;
+  const pick = $("f-feature"), cur = pick.value;
+  const open = state.board.filter((f) => !f.passes);
+  pick.innerHTML = open.map((f) => `<option value="${esc(f.id)}">${esc(f.id)} ${esc(f.title)}</option>`).join("") || `<option value="">Every feature passes</option>`;
+  if (open.some((f) => f.id === cur)) pick.value = cur;
+  const running = a && a.running;
+  $("startbtn").disabled = running || !open.length;
+  if (!a) { $("active").innerHTML = ""; return; }
+  const status = running ? `<span class="pill warn">running</span>` : a.exit_code === 0 ? `<span class="pill ok">finished</span>` : `<span class="pill bad">exited ${esc(a.exit_code)}</span>`;
+  $("active").innerHTML = `<div class="role-card" style="margin-bottom:12px">
+    <h3>${esc(a.feature)} ${status} <span class="muted">${esc(a.mode)} · started ${ago(a.started)}</span></h3>
+    <div class="mono muted" style="word-break:break-all">${esc(a.command)}</div>
+    ${running ? `<div style="margin-top:8px"><button class="danger" id="stopbtn">Stop (Ctrl-C)</button></div>` : ""}
+  </div>`;
+  if (running) $("stopbtn").onclick = async () => {
+    $("stopbtn").disabled = true;
+    try { await api("/api/runs/stop", {}); } catch (e) { flash(e.message, true); }
+    refresh();
+  };
+}
+
+function renderLogPicker() {
+  const sel = $("logpick");
+  const logs = state.logs;
+  if (!logs.length) { sel.innerHTML = `<option value="">No run logs</option>`; return; }
+  if (!userPickedLog || !logs.some((l) => l.name === logName)) {
+    const want = state.active ? state.active.log : logs[0].name;
+    if (want !== logName) selectLog(want);
+  }
+  sel.innerHTML = logs.map((l) => {
+    const tag = l.outcome === "passed" ? "✓" : l.outcome === "failed" ? "✗" : "…";
+    return `<option value="${esc(l.name)}">${tag} ${esc(l.name)} · ${l.tool_calls} calls · ${l.denials} denied</option>`;
+  }).join("");
+  sel.value = logName;
+  const cur = logs.find((l) => l.name === logName);
+  if (cur) {
+    const links = cur.links.map((x) => `<a href="${safeUrl(x.url)}" target="_blank" rel="noopener">${esc(x.label)}</a>`).join(" · ");
+    $("logmeta").innerHTML = `${esc(cur.branch || "")} · ${cur.phase ? "phase: " + esc(cur.phase) + " · " : ""}updated ${ago(cur.modified)}${links ? " · " + links : ""}`;
+  }
+}
+
+function selectLog(name) {
+  logName = name; logOffset = 0; logLines = [];
+  $("log").innerHTML = "";
+  tailLog();
+}
+
+function classify(line) {
+  if (/^\s+\[[\w-]+\] (denied|DENIED) /.test(line)) return "denied";
+  if (/^\s+watch:/.test(line) || /^PR opened:/.test(line)) return "link";
+  if (/^F-\d+ .* -> branch /.test(line)) return "start";
+  if (/^\d\/\d /.test(line)) return "phase";
+  if (/^(Tests committed as|Done:)/.test(line) || /^EXIT 0$/.test(line)) return "milestone";
+  if (/^(Pipeline stopped|Pipeline didn't start|Push failed)|checks failed|^EXIT -?[1-9]/.test(line)) return "problem";
+  return "info";
+}
+
+function lineHtml(line) {
+  const kind = classify(line);
+  let html = esc(line);
+  html = html.replace(/^(\s+)\[([\w-]+)\] (\w+)/, (m, sp, role, tool) => `${sp}<span class="role">[${role}]</span> <span class="tool">${tool}</span>`);
+  if (kind === "link") html = html.replace(/(https?:\/\/\S+)/, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+  return `<div class="l-${kind}">${html || "&nbsp;"}</div>`;
+}
+
+function paintLog() {
+  const only = $("onlydenied").checked;
+  const lines = only ? logLines.filter((l) => classify(l) === "denied") : logLines;
+  $("log").innerHTML = lines.map(lineHtml).join("") || `<span class="muted">${only ? "No denied calls in this run." : "Empty log."}</span>`;
+  if ($("follow").checked) $("log").scrollTop = $("log").scrollHeight;
+}
+
+let tailing = false;
+async function tailLog() {
+  if (!logName || tailing) return;
+  tailing = true;
+  try {
+    const name = logName;
+    const r = await api(`/api/log?name=${encodeURIComponent(name)}&offset=${logOffset}`);
+    if (name !== logName) return;
+    if (r.offset < logOffset) logLines = [];
+    logOffset = r.offset;
+    if (r.text) { logLines.push(...r.text.replace(/\n$/, "").split("\n")); paintLog(); }
+    else if (!logLines.length) paintLog();
+  } catch (e) { /* the next poll retries */ }
+  finally { tailing = false; }
+}
+
+async function showTranscript(session, label) {
+  $("t-title").textContent = `Transcript · ${label}`;
+  $("t-body").innerHTML = `<div class="empty">Loading…</div>`;
+  $("transcript").showModal();
+  try {
+    const r = await api(`/api/transcript?session=${encodeURIComponent(session)}`);
+    $("t-body").innerHTML = r.entries.map((e) => {
+      if (e.kind === "text") return `<div class="t-entry ${esc(e.role)}"><strong>${esc(e.role)}</strong>\n${esc(e.text)}</div>`;
+      if (e.kind === "tool_use") return `<div class="t-entry tool_use">→ ${esc(e.tool)} ${esc(e.input)}</div>`;
+      return `<div class="t-entry tool_result ${e.error ? "err" : ""}">${esc(e.text)}</div>`;
+    }).join("") || `<div class="empty">The transcript is empty.</div>`;
+  } catch (e) {
+    $("t-body").innerHTML = `<div class="msg bad">${esc(e.message)}</div><div class="note mono">session ${esc(session)}</div>`;
+  }
+}
+
+function flash(text, bad) {
+  $("formmsg").innerHTML = `<div class="msg ${bad ? "bad" : "ok"}" style="margin-top:10px">${esc(text)}</div>`;
+  setTimeout(() => { $("formmsg").innerHTML = ""; }, 8000);
+}
+
+async function refresh() {
+  try {
+    state = await api("/api/state");
+    $("live").classList.remove("stale");
+    $("repo").innerHTML = `${state.repo ? `<a href="https://github.com/${esc(state.repo)}" target="_blank" rel="noopener">${esc(state.repo)}</a>` : "local repo"} · checkout <span class="mono">${esc(state.checkout)}</span> · merged = on <span class="mono" title="git fetch to refresh">${esc(state.main.ref)} ${esc(state.main.sha)}</span>${state.github ? "" : " · PR status off (gh not available)"}`;
+    $("updated").textContent = "updated " + new Date().toLocaleTimeString();
+    // only repaint a section when its data changed, so open details and scroll positions survive polling
+    const parts = {kpis: [state.overview], board: [state.board, state.active, state.repo], control: [state.board, state.active],
+      logs: [state.logs, state.active], runs: [state.runs], denials: [state.denials, state.runs.length]};
+    const paint = {kpis: () => renderKpis(state.overview), board: renderBoard, control: renderControl,
+      logs: renderLogPicker, runs: renderRuns, denials: renderDenials};
+    for (const k in parts) {
+      const sig = JSON.stringify(parts[k]);
+      if (sig !== painted[k]) { painted[k] = sig; paint[k](); }
+    }
+  } catch (e) {
+    $("live").classList.add("stale");
+    $("updated").textContent = "dashboard server unreachable";
+  }
+}
+
+$("logpick").addEventListener("change", (e) => { userPickedLog = true; selectLog(e.target.value); });
+$("onlydenied").addEventListener("change", paintLog);
+$("t-close").addEventListener("click", () => $("transcript").close());
+$("startbtn").addEventListener("click", async () => {
+  const body = { feature: $("f-feature").value, mode: $("f-mode").value, budget: Number($("f-budget").value), push: $("f-push").checked };
+  $("startbtn").disabled = true;
+  try {
+    const run = await api("/api/runs", body);
+    userPickedLog = false;
+    flash(`Started ${run.feature}. Its log is selected on the left.`, false);
+  } catch (e) { flash(e.message, true); }
+  refresh();
+});
+
+refresh();
+setInterval(refresh, 3000);
+setInterval(tailLog, 1000);
+</script>
+</body>
+</html>
