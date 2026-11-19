@@ -303,6 +303,12 @@ def test_huge_amount_is_a_clean_error_not_a_failed_verdict(tmp_path):
     assert_clean_error(result)
 
 
+def test_deeply_nested_json_is_a_clean_error(tmp_path):
+    # json.loads raises RecursionError, not JSONDecodeError, on very deep nesting.
+    result = run_cli(str(write_account(tmp_path, "[" * 200_000 + "]" * 200_000)))
+    assert_clean_error(result)
+
+
 def test_invalid_input_prints_nothing_on_stdout_as_a_verdict(tmp_path):
     # An invalid file must not be reported as a verdict.
     result = run_cli(str(write_account(tmp_path, "not json")))

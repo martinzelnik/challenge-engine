@@ -15,6 +15,12 @@ Newest entry at the top. Each session adds one entry using this template:
 
 (Spec ambiguities go here, with the reading you chose.)
 
+- F-006 CLI input format: the spec doesn't define the JSON layout. Chose the stricter
+  reading: money must be a JSON string (plain numbers are rejected, to avoid float
+  rounding), `snapshots` and `trades` are required, and unknown fields are rejected.
+  Trader-facing files may well use plain numbers; a human should confirm.
+- R4: the spec defines no challenge start date, so trades opened before the first
+  snapshot count as trading days.
 - R1: does a snapshot at exactly local midnight belong to the old or new day?
   Chose the new day (a day runs from midnight inclusive), so its start balance
   is the last balance before midnight.

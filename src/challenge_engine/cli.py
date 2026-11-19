@@ -180,6 +180,8 @@ def load_account(path: Path) -> tuple[AccountHistory, ChallengeConfig]:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise InputError(f"{path}: not valid JSON ({exc})") from None
+    except RecursionError:
+        raise InputError(f"{path}: not valid JSON (nested too deeply)") from None
     try:
         return parse_account(data)
     except InputError as exc:
