@@ -31,7 +31,7 @@
         "Equity strictly below the overall limit gives FAILED with the first breach time",
         "Equity exactly at the limit is allowed"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F-004",
