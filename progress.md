@@ -25,7 +25,10 @@ Newest entry at the top. Each session adds one entry using this template:
 - Agent/model: agent pipeline: test-writer (claude-opus-5-5, 18 turns, $0.50, 71s); implementer (claude-opus-5-5, 18 turns, $0.36, 60s)
 - Done: test-writer wrote failing tests from the spec; implementer made them pass.
 - Tests: 166 passed in 2.42s, lint clean: yes
-- Problems / surprises: see the agents' summaries in the run log (logs/agent-runs.jsonl).
+- Problems / surprises: see the agents' summaries in the run log (logs/agent-runs.jsonl). After main was merged in, every feature passed, which broke
+  `test_mark_passing_keeps_the_file_byte_for_byte_except_one_field` (it picked a pending
+  feature from the live feature_list.json). The test now marks the last feature pending in its
+  temp copy first; the assertion is unchanged.
 - Next: review the PR
 
 ## 2026-11-19 — F-005 Overall verdict (evaluate)

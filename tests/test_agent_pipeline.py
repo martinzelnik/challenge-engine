@@ -140,7 +140,13 @@ def test_branch_name_drops_spec_reference():
 
 
 def test_mark_passing_keeps_the_file_byte_for_byte_except_one_field(tmp_path):
-    shutil.copy(ROOT / "feature_list.json", tmp_path / "feature_list.json")
+    # Use the real file's formatting, but make sure one feature is still pending:
+    # once every feature passes, the live file has nothing left to pick.
+    text = (ROOT / "feature_list.json").read_text()
+    head, sep, tail = text.rpartition('"passes": true')
+    if '"passes": false' not in text and sep:
+        text = head + '"passes": false' + tail
+    (tmp_path / "feature_list.json").write_text(text)
     before = (tmp_path / "feature_list.json").read_text()
     target = pipeline.pick_feature(json.loads(before))["id"]
 
