@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -387,3 +389,45 @@ def test_log_endpoint_refuses_unknown_names(server):
     _, base = server
     status, _ = _request(base + "/api/log?name=..%2Ffeature_list.json")
     assert status == 404
+
+
+def test_start_logs_output_and_stop_interrupts_the_run(tmp_path: Path):
+    """Start and Stop end to end, with a stand-in for python that prints and waits."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    fake = tmp_path.parent / f"{tmp_path.name}-python"
+    fake.write_text(
+        "#!/bin/sh\n"
+        "trap 'echo \"Pipeline stopped: interrupted\"; exit 130' INT\n"
+        'echo "F-005 Overall verdict -> branch feat/F-005-x"\n'
+        'echo "1/2 test-writer"\n'
+        "while true; do sleep 0.1; done\n"
+    )
+    fake.chmod(0o755)
+    manager = RunManager(tmp_path, str(fake))
+    run = manager.start({"feature": "F-005"}, FEATURES)
+    assert run["feature"] == "F-005" and run["command"].endswith("--no-push")
+    log = tmp_path / data.RUN_LOG_DIR / run["log"]
+    for _ in range(50):
+        if "1/2 test-writer" in log.read_text():
+            break
+        time.sleep(0.1)
+    with pytest.raises(StartError, match="still running"):
+        manager.start({"feature": "F-006"}, FEATURES)
+
+    manager.stop()
+    for _ in range(50):
+        if not manager.status()["running"]:
+            break
+        time.sleep(0.1)
+    status = manager.status()
+    assert not status["running"] and status["exit_code"] == 130
+    summary = data.summarize_log(log.read_text())
+    assert summary["feature"] == "F-005" and summary["outcome"] == "failed"
+    assert log.read_text().rstrip().endswith("EXIT 130")
+
+
+def test_start_refuses_a_dirty_tree(tmp_path: Path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "stray.txt").write_text("x")
+    with pytest.raises(StartError, match="uncommitted"):
+        RunManager(tmp_path, "/py").start({"feature": "F-005"}, FEATURES)
