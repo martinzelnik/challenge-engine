@@ -41,7 +41,7 @@
         "Several trades on one day count once",
         "A trade opened late in the evening UTC can fall on the next local day"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F-005",

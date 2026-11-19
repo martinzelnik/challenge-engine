@@ -21,6 +21,13 @@ Newest entry at the top. Each session adds one entry using this template:
 
 ---
 
+## 2026-11-19 — F-004 Minimum trading days rule (R4)
+- Agent/model: agent pipeline: test-writer (claude-opus-5-5, 14 turns, $0.39, 57s); implementer (claude-opus-5-5, 12 turns, $0.20, 22s)
+- Done: test-writer wrote failing tests from the spec; implementer made them pass.
+- Tests: 119 passed in 1.26s, lint clean: yes
+- Problems / surprises: see the agents' summaries in the run log (logs/agent-runs.jsonl).
+- Next: review the PR
+
 ## 2026-11-19 — F-003 Max loss rule (R2)
 - Agent/model: agent pipeline: test-writer (claude-opus-5-5, 15 turns, $0.48, 39s); implementer (claude-opus-5-5, 15 turns, $0.24, 30s)
 - Done: test-writer wrote failing tests from the spec; implementer made them pass.

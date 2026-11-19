@@ -88,8 +88,21 @@ def check_profit_target(history: AccountHistory, config: ChallengeConfig) -> Rul
 
 
 def check_min_trading_days(history: AccountHistory, config: ChallengeConfig) -> RuleResult:
-    """R4. Feature F-004."""
-    raise NotImplementedError("F-004")
+    """R4. Counts distinct local days (config.timezone) on which at least one trade was opened."""
+    days = {trade.opened_at.astimezone(config.tz).date() for trade in history.trades}
+    count = len(days)
+    required = config.min_trading_days
+    if count >= required:
+        return RuleResult(
+            "min_trading_days",
+            RuleStatus.PASSED,
+            f"Traded on {count} distinct days, meeting the minimum of {required}.",
+        )
+    return RuleResult(
+        "min_trading_days",
+        RuleStatus.PENDING,
+        f"Traded on {count} distinct days so far; at least {required} are needed to pass.",
+    )
 
 
 def evaluate(history: AccountHistory, config: ChallengeConfig) -> Verdict:
