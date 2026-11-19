@@ -43,6 +43,9 @@ jobs:
       - name: Tests
         run: pytest -q
 
+      - name: Hand-checked scenarios (end to end through the CLI)
+        run: python evals/run_scenarios.py
+
       - name: Agent boundaries
         id: boundaries
         run: python scripts/check_boundaries.py --base "$BASE_SHA"

@@ -1,0 +1,89 @@
+{
+  "description": "No single day loses 5,000, but the losses add up and equity crosses the overall 90,000 floor.",
+  "worked_out": [
+    "Nov 2: day-start 100,000, limit 95,000; lowest equity 96,000. Nov 3: day-start 96,000, limit 91,000; lowest 92,000.",
+    "Nov 4: day-start 92,000, limit 87,000; equity 89,999.99 and 89,500 stay above it, so R1 passes.",
+    "Equity 89,999.99 at Nov 4 10:00 is strictly below 90,000: R2 breached there.",
+    "Latest balance 89,500: R3 pending. Trades on 3 days: R4 pending."
+  ],
+  "account": {
+    "config": {
+      "initial_balance": "100000"
+    },
+    "snapshots": [
+      {
+        "at": "2026-11-02T10:00:00+01:00",
+        "balance": "100000",
+        "equity": "98000"
+      },
+      {
+        "at": "2026-11-02T18:00:00+01:00",
+        "balance": "96000",
+        "equity": "96000"
+      },
+      {
+        "at": "2026-11-03T12:00:00+01:00",
+        "balance": "96000",
+        "equity": "93000"
+      },
+      {
+        "at": "2026-11-03T18:00:00+01:00",
+        "balance": "92000",
+        "equity": "92000"
+      },
+      {
+        "at": "2026-11-04T10:00:00+01:00",
+        "balance": "92000",
+        "equity": "89999.99"
+      },
+      {
+        "at": "2026-11-04T18:00:00+01:00",
+        "balance": "89500",
+        "equity": "89500"
+      }
+    ],
+    "trades": [
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-02T09:00:00+01:00",
+        "closed_at": "2026-11-02T17:00:00+01:00",
+        "pnl": "-4000"
+      },
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-03T09:00:00+01:00",
+        "closed_at": "2026-11-03T17:00:00+01:00",
+        "pnl": "-4000"
+      },
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-04T09:00:00+01:00",
+        "closed_at": "2026-11-04T17:00:00+01:00",
+        "pnl": "-2500"
+      }
+    ]
+  },
+  "expect": {
+    "verdict": "FAILED",
+    "exit_code": 1,
+    "failed_at": "2026-11-04T10:00:00+01:00",
+    "rules": {
+      "max_daily_loss": {
+        "status": "PASSED",
+        "breached_at": null
+      },
+      "max_loss": {
+        "status": "FAILED",
+        "breached_at": "2026-11-04T10:00:00+01:00"
+      },
+      "profit_target": {
+        "status": "PENDING",
+        "breached_at": null
+      },
+      "min_trading_days": {
+        "status": "PENDING",
+        "breached_at": null
+      }
+    }
+  }
+}
