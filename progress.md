@@ -15,11 +15,28 @@ Newest entry at the top. Each session adds one entry using this template:
 
 (Spec ambiguities go here, with the reading you chose.)
 
+- F-006 CLI input format: the spec doesn't define the JSON layout. Chose the stricter
+  reading: money must be a JSON string (plain numbers are rejected, to avoid float
+  rounding), `snapshots` and `trades` are required, and unknown fields are rejected.
+  Trader-facing files may well use plain numbers; a human should confirm.
+- R4: the spec defines no challenge start date, so trades opened before the first
+  snapshot count as trading days.
 - R1: does a snapshot at exactly local midnight belong to the old or new day?
   Chose the new day (a day runs from midnight inclusive), so its start balance
   is the last balance before midnight.
 
 ---
+
+## 2026-11-19 — F-006 CLI: evaluate an account from a JSON file
+- Agent/model: agent pipeline: test-writer (claude-opus-5-5, 18 turns, $0.50, 71s); implementer (claude-opus-5-5, 18 turns, $0.36, 60s)
+- Done: test-writer wrote failing tests from the spec; implementer made them pass.
+- Tests: 166 passed in 2.42s, lint clean: yes
+- Problems / surprises: see the agents' summaries in the run log (logs/agent-runs.jsonl). After main was merged in, every feature passed, which broke
+  `test_mark_passing_keeps_the_file_byte_for_byte_except_one_field` (it picked a pending
+  feature from the live feature_list.json). The test now marks the last feature pending in its
+  temp copy first; the assertion is unchanged. Review fix: a huge but finite amount ("1e999999999")
+  overflowed inside the rules and exited 1 with a traceback; the CLI now exits 2 with an error.
+- Next: review the PR
 
 ## 2026-11-19 — F-005 Overall verdict (evaluate)
 - Agent/model: agent pipeline: test-writer (claude-opus-5-5, 15 turns, $0.43, 58s); implementer (claude-opus-5-5, 17 turns, $0.27, 30s)

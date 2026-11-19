@@ -62,7 +62,7 @@
         "Exit code 0 for PASSED or IN_PROGRESS, 1 for FAILED, 2 for invalid input",
         "Invalid input prints a clear error, not a traceback"
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }
