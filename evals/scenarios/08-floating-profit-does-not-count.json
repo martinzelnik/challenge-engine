@@ -1,0 +1,101 @@
+{
+  "description": "Equity is above the target thanks to an open winner, but closed balance is not. The account stays in progress.",
+  "worked_out": [
+    "Latest snapshot: balance 108,000, equity 112,000. Target 110,000 is checked on balance: R3 pending.",
+    "Equity never drops: R1 and R2 pass. Trades opened on Nov 2-6: 5 days, R4 passes.",
+    "No rule failed, not all passed: IN_PROGRESS, exit 0."
+  ],
+  "account": {
+    "config": {
+      "initial_balance": "100000"
+    },
+    "snapshots": [
+      {
+        "at": "2026-11-02T18:00:00+01:00",
+        "balance": "102000",
+        "equity": "102000"
+      },
+      {
+        "at": "2026-11-03T18:00:00+01:00",
+        "balance": "104000",
+        "equity": "104000"
+      },
+      {
+        "at": "2026-11-04T18:00:00+01:00",
+        "balance": "106000",
+        "equity": "106000"
+      },
+      {
+        "at": "2026-11-05T18:00:00+01:00",
+        "balance": "107000",
+        "equity": "107000"
+      },
+      {
+        "at": "2026-11-06T18:00:00+01:00",
+        "balance": "108000",
+        "equity": "112000"
+      }
+    ],
+    "trades": [
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-02T09:00:00+01:00",
+        "closed_at": "2026-11-02T17:00:00+01:00",
+        "pnl": "2000"
+      },
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-03T09:00:00+01:00",
+        "closed_at": "2026-11-03T17:00:00+01:00",
+        "pnl": "2000"
+      },
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-04T09:00:00+01:00",
+        "closed_at": "2026-11-04T17:00:00+01:00",
+        "pnl": "2000"
+      },
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-05T09:00:00+01:00",
+        "closed_at": "2026-11-05T17:00:00+01:00",
+        "pnl": "1000"
+      },
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-06T09:00:00+01:00",
+        "closed_at": "2026-11-06T12:00:00+01:00",
+        "pnl": "1000"
+      },
+      {
+        "symbol": "XAUUSD",
+        "opened_at": "2026-11-06T13:00:00+01:00",
+        "closed_at": null,
+        "pnl": "4000"
+      }
+    ]
+  },
+  "expect": {
+    "verdict": "IN_PROGRESS",
+    "exit_code": 0,
+    "failed_at": null,
+    "rules": {
+      "max_daily_loss": {
+        "status": "PASSED",
+        "breached_at": null
+      },
+      "max_loss": {
+        "status": "PASSED",
+        "breached_at": null
+      },
+      "profit_target": {
+        "status": "PENDING",
+        "breached_at": null
+      },
+      "min_trading_days": {
+        "status": "PASSED",
+        "breached_at": null
+      }
+    }
+  }
+}

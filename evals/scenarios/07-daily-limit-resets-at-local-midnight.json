@@ -1,0 +1,68 @@
+{
+  "description": "A snapshot at 23:30 UTC is already the next day in Prague, so its day-start is the previous evening's balance and the floating loss breaks the new day's limit.",
+  "worked_out": [
+    "Nov 2 23:30Z is Nov 3 00:30 in Prague. Last snapshot before Prague midnight is Nov 2 22:00Z with balance 106,000.",
+    "Nov 3 daily limit = 106,000 - 5,000 = 101,000. Equity 100,500 < 101,000: R1 breached at 2026-11-02T23:30Z.",
+    "Splitting days in UTC would keep it on Nov 2 (day-start 100,000, limit 95,000) and miss the breach.",
+    "Lowest equity 100,500 > 90,000: R2 passes. Balance 106,000: R3 pending. 1 trade day: R4 pending."
+  ],
+  "account": {
+    "config": {
+      "initial_balance": "100000"
+    },
+    "snapshots": [
+      {
+        "at": "2026-11-02T09:00:00Z",
+        "balance": "100000",
+        "equity": "100000"
+      },
+      {
+        "at": "2026-11-02T22:00:00Z",
+        "balance": "106000",
+        "equity": "106000"
+      },
+      {
+        "at": "2026-11-02T23:30:00Z",
+        "balance": "106000",
+        "equity": "100500"
+      }
+    ],
+    "trades": [
+      {
+        "symbol": "NAS100",
+        "opened_at": "2026-11-02T09:15:00Z",
+        "closed_at": "2026-11-02T21:00:00Z",
+        "pnl": "6000"
+      },
+      {
+        "symbol": "NAS100",
+        "opened_at": "2026-11-02T21:30:00Z",
+        "closed_at": null,
+        "pnl": "-5500"
+      }
+    ]
+  },
+  "expect": {
+    "verdict": "FAILED",
+    "exit_code": 1,
+    "failed_at": "2026-11-02T23:30:00Z",
+    "rules": {
+      "max_daily_loss": {
+        "status": "FAILED",
+        "breached_at": "2026-11-02T23:30:00Z"
+      },
+      "max_loss": {
+        "status": "PASSED",
+        "breached_at": null
+      },
+      "profit_target": {
+        "status": "PENDING",
+        "breached_at": null
+      },
+      "min_trading_days": {
+        "status": "PENDING",
+        "breached_at": null
+      }
+    }
+  }
+}

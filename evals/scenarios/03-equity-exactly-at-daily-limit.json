@@ -1,0 +1,62 @@
+{
+  "description": "Non-default config (50,000 account, 4% daily loss). Equity touches the daily limit exactly, which is allowed.",
+  "worked_out": [
+    "Daily loss = 0.04 x 50,000 = 2,000; day-start 50,000, so the limit is 48,000.",
+    "Equity 48,000.00 is not strictly below 48,000: no breach.",
+    "Overall limit 45,000: passes. Target 55,000, latest balance 49,000: pending. 1 trading day of 4: pending."
+  ],
+  "account": {
+    "config": {
+      "initial_balance": "50000",
+      "max_daily_loss_pct": "0.04"
+    },
+    "snapshots": [
+      {
+        "at": "2026-11-02T10:00:00+01:00",
+        "balance": "50000",
+        "equity": "50000"
+      },
+      {
+        "at": "2026-11-02T15:00:00+01:00",
+        "balance": "50000",
+        "equity": "48000.00"
+      },
+      {
+        "at": "2026-11-02T18:00:00+01:00",
+        "balance": "49000",
+        "equity": "49000"
+      }
+    ],
+    "trades": [
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-02T10:30:00+01:00",
+        "closed_at": "2026-11-02T17:00:00+01:00",
+        "pnl": "-1000"
+      }
+    ]
+  },
+  "expect": {
+    "verdict": "IN_PROGRESS",
+    "exit_code": 0,
+    "failed_at": null,
+    "rules": {
+      "max_daily_loss": {
+        "status": "PASSED",
+        "breached_at": null
+      },
+      "max_loss": {
+        "status": "PASSED",
+        "breached_at": null
+      },
+      "profit_target": {
+        "status": "PENDING",
+        "breached_at": null
+      },
+      "min_trading_days": {
+        "status": "PENDING",
+        "breached_at": null
+      }
+    }
+  }
+}

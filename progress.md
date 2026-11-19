@@ -27,6 +27,17 @@ Newest entry at the top. Each session adds one entry using this template:
 
 ---
 
+## 2026-11-19 — Hand-checked scenarios (no feature)
+- Agent/model: Claude Code (Opus 5.5), at Martin's request
+- Done: 8 account scenarios in `evals/scenarios/` with verdicts worked out by hand from the
+  spec, `evals/run_scenarios.py` to run them through the CLI and `evaluate`, and a CI step
+  that runs them on every PR.
+- Tests: 8/8 scenarios match. Mutation check: using equity for the day-start, UTC day
+  splits (R1 or R4), equity for the profit target, or the first failed rule instead of the
+  earliest breach each make at least one scenario fail.
+- Problems / surprises: none of the engine's answers disagreed with the hand-worked ones.
+- Next: hidden eval tasks for F-003 to F-006.
+
 ## 2026-11-19 — F-006 CLI: evaluate an account from a JSON file
 - Agent/model: agent pipeline: test-writer (claude-opus-5-5, 18 turns, $0.50, 71s); implementer (claude-opus-5-5, 18 turns, $0.36, 60s)
 - Done: test-writer wrote failing tests from the spec; implementer made them pass.

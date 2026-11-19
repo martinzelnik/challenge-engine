@@ -1,0 +1,36 @@
+{
+  "description": "Four profitable days in a row, target hit on the last day, a floating dip on day 3 stays above the daily limit.",
+  "worked_out": [
+    "Defaults: 100,000 initial, daily loss 5,000, overall limit 90,000, target 110,000, 4 days, Europe/Prague (UTC+1 in November).",
+    "Nov 4 day-start balance is 105,500 (last snapshot before midnight), so the daily limit is 100,500; the 102,000 dip is fine.",
+    "Latest balance 110,500 >= 110,000: target met. Trades opened on Nov 2, 3, 4 and 5: 4 days."
+  ],
+  "account": {
+    "config": {"initial_balance": "100000"},
+    "snapshots": [
+      {"at": "2026-11-02T10:00:00+01:00", "balance": "100000", "equity": "100000"},
+      {"at": "2026-11-02T18:00:00+01:00", "balance": "103000", "equity": "103000"},
+      {"at": "2026-11-03T18:00:00+01:00", "balance": "105500", "equity": "105500"},
+      {"at": "2026-11-04T12:00:00+01:00", "balance": "105500", "equity": "102000"},
+      {"at": "2026-11-04T18:00:00+01:00", "balance": "107000", "equity": "107000"},
+      {"at": "2026-11-05T18:00:00+01:00", "balance": "110500", "equity": "110500"}
+    ],
+    "trades": [
+      {"symbol": "EURUSD", "opened_at": "2026-11-02T10:05:00+01:00", "closed_at": "2026-11-02T17:00:00+01:00", "pnl": "3000"},
+      {"symbol": "XAUUSD", "opened_at": "2026-11-03T09:30:00+01:00", "closed_at": "2026-11-03T16:00:00+01:00", "pnl": "2500"},
+      {"symbol": "US500", "opened_at": "2026-11-04T09:00:00+01:00", "closed_at": "2026-11-04T17:30:00+01:00", "pnl": "1500"},
+      {"symbol": "EURUSD", "opened_at": "2026-11-05T08:45:00+01:00", "closed_at": "2026-11-05T17:45:00+01:00", "pnl": "3500"}
+    ]
+  },
+  "expect": {
+    "verdict": "PASSED",
+    "exit_code": 0,
+    "failed_at": null,
+    "rules": {
+      "max_daily_loss": {"status": "PASSED", "breached_at": null},
+      "max_loss": {"status": "PASSED", "breached_at": null},
+      "profit_target": {"status": "PASSED", "breached_at": null},
+      "min_trading_days": {"status": "PASSED", "breached_at": null}
+    }
+  }
+}

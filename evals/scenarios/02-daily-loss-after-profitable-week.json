@@ -1,0 +1,118 @@
+{
+  "description": "A profitable week, then on Monday a floating loss breaks the daily limit. The day-start uses Friday's closing balance, not its equity.",
+  "worked_out": [
+    "Fri Nov 6 ends with balance 108,000 but equity 106,000 (an open losing position).",
+    "Mon Nov 9 day-start balance = 108,000 (balance, not equity), daily limit = 108,000 - 5,000 = 103,000.",
+    "Equity 102,999.99 at 14:30 is strictly below 103,000: R1 breached at 2026-11-09T14:30+01:00.",
+    "An engine that used Friday's equity (106,000) would put the limit at 101,000 and miss the breach.",
+    "Lowest equity 102,999.99 > 90,000: R2 passes. Latest balance 104,000 < 110,000: R3 pending. Trades on 6 days: R4 passes."
+  ],
+  "account": {
+    "config": {
+      "initial_balance": "100000"
+    },
+    "snapshots": [
+      {
+        "at": "2026-11-02T18:00:00+01:00",
+        "balance": "101500",
+        "equity": "101500"
+      },
+      {
+        "at": "2026-11-03T18:00:00+01:00",
+        "balance": "103000",
+        "equity": "103000"
+      },
+      {
+        "at": "2026-11-04T18:00:00+01:00",
+        "balance": "104200",
+        "equity": "104200"
+      },
+      {
+        "at": "2026-11-05T18:00:00+01:00",
+        "balance": "106000",
+        "equity": "106000"
+      },
+      {
+        "at": "2026-11-06T18:00:00+01:00",
+        "balance": "108000",
+        "equity": "106000"
+      },
+      {
+        "at": "2026-11-09T10:00:00+01:00",
+        "balance": "108000",
+        "equity": "104000"
+      },
+      {
+        "at": "2026-11-09T14:30:00+01:00",
+        "balance": "108000",
+        "equity": "102999.99"
+      },
+      {
+        "at": "2026-11-09T16:00:00+01:00",
+        "balance": "104000",
+        "equity": "104000"
+      }
+    ],
+    "trades": [
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-02T09:00:00+01:00",
+        "closed_at": "2026-11-02T15:00:00+01:00",
+        "pnl": "1500"
+      },
+      {
+        "symbol": "EURUSD",
+        "opened_at": "2026-11-03T09:00:00+01:00",
+        "closed_at": "2026-11-03T15:00:00+01:00",
+        "pnl": "1500"
+      },
+      {
+        "symbol": "GBPUSD",
+        "opened_at": "2026-11-04T09:00:00+01:00",
+        "closed_at": "2026-11-04T15:00:00+01:00",
+        "pnl": "1200"
+      },
+      {
+        "symbol": "XAUUSD",
+        "opened_at": "2026-11-05T09:00:00+01:00",
+        "closed_at": "2026-11-05T15:00:00+01:00",
+        "pnl": "1800"
+      },
+      {
+        "symbol": "US500",
+        "opened_at": "2026-11-06T09:00:00+01:00",
+        "closed_at": "2026-11-06T15:00:00+01:00",
+        "pnl": "2000"
+      },
+      {
+        "symbol": "NAS100",
+        "opened_at": "2026-11-06T16:00:00+01:00",
+        "closed_at": "2026-11-09T15:45:00+01:00",
+        "pnl": "-4000"
+      }
+    ]
+  },
+  "expect": {
+    "verdict": "FAILED",
+    "exit_code": 1,
+    "failed_at": "2026-11-09T14:30:00+01:00",
+    "rules": {
+      "max_daily_loss": {
+        "status": "FAILED",
+        "breached_at": "2026-11-09T14:30:00+01:00"
+      },
+      "max_loss": {
+        "status": "PASSED",
+        "breached_at": null
+      },
+      "profit_target": {
+        "status": "PENDING",
+        "breached_at": null
+      },
+      "min_trading_days": {
+        "status": "PASSED",
+        "breached_at": null
+      }
+    }
+  }
+}
