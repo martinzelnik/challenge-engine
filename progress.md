@@ -28,7 +28,8 @@ Newest entry at the top. Each session adds one entry using this template:
 - Problems / surprises: see the agents' summaries in the run log (logs/agent-runs.jsonl). After main was merged in, every feature passed, which broke
   `test_mark_passing_keeps_the_file_byte_for_byte_except_one_field` (it picked a pending
   feature from the live feature_list.json). The test now marks the last feature pending in its
-  temp copy first; the assertion is unchanged.
+  temp copy first; the assertion is unchanged. Review fix: a huge but finite amount ("1e999999999")
+  overflowed inside the rules and exited 1 with a traceback; the CLI now exits 2 with an error.
 - Next: review the PR
 
 ## 2026-11-19 — F-005 Overall verdict (evaluate)

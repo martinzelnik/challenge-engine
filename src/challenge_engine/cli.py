@@ -19,7 +19,7 @@ import json
 import sys
 from collections.abc import Sequence
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfoNotFoundError
@@ -208,6 +208,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_INVALID
 
-    verdict = evaluate(history, config)
+    try:
+        verdict = evaluate(history, config)
+    except DecimalException as exc:
+        # A finite but absurd amount (e.g. "1e999999999") parses, then overflows in the rules.
+        print(
+            f"error: {args.account}: amounts are out of range ({type(exc).__name__})",
+            file=sys.stderr,
+        )
+        return EXIT_INVALID
     print(format_verdict(verdict))
     return EXIT_FAILED if verdict.status is VerdictStatus.FAILED else EXIT_OK

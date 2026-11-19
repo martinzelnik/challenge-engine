@@ -295,6 +295,14 @@ def test_top_level_not_an_object_is_a_clean_error(tmp_path):
     assert_clean_error(result)
 
 
+def test_huge_amount_is_a_clean_error_not_a_failed_verdict(tmp_path):
+    # "1e999999999" parses as a finite Decimal but overflows inside the rules. It must
+    # exit 2 like any invalid input, not 1, which callers would read as FAILED.
+    data = account(initial_balance="1e999999999")
+    result = run_cli(str(write_account(tmp_path, data)))
+    assert_clean_error(result)
+
+
 def test_invalid_input_prints_nothing_on_stdout_as_a_verdict(tmp_path):
     # An invalid file must not be reported as a verdict.
     result = run_cli(str(write_account(tmp_path, "not json")))
